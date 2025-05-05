@@ -1,10 +1,11 @@
 "use client";
-// VatBreakdown.jsx - Improved for zero VATable transactions
+// VatBreakdown.jsx - Enhanced for three VAT status options
 import React, { useState } from "react";
 
 const VatBreakdown = ({
   totalCredit = 0,
   vatableTotal = 0,
+  exemptTotal = 0,
   nonVatableTotal = 0,
   vatAmount = 0,
   creditAfterVat = 0,
@@ -29,8 +30,12 @@ const VatBreakdown = ({
     }
   };
 
-  // Check if all credit transactions are non-VATable
-  const allNonVATable = totalCredit > 0 && vatableTotal === 0;
+  // Check VAT status
+  const hasNoVATable = totalCredit > 0 && vatableTotal === 0;
+  const hasOnlyExempt =
+    totalCredit > 0 && vatableTotal === 0 && exemptTotal > 0;
+  const hasAllNonVATable =
+    totalCredit > 0 && vatableTotal === 0 && exemptTotal === 0;
 
   return (
     <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -44,12 +49,14 @@ const VatBreakdown = ({
         </button>
       </div>
 
-      {allNonVATable && (
+      {hasNoVATable && (
         <div className="mt-4 bg-blue-50 p-3 rounded text-sm text-blue-800">
           <p>
-            <strong>Note:</strong> All credit transactions are currently marked
-            as non-VATable, so no VAT is being calculated. To apply VAT, please
-            select at least one transaction as VATable in the selector above.
+            <strong>Note:</strong> No credit transactions are currently marked
+            as VATable (7.5%), so no VAT is being calculated.
+            {hasOnlyExempt &&
+              " All applicable transactions are marked as VAT Exempt (0%)."}
+            {hasAllNonVATable && " All transactions are marked as Non-VATable."}
           </p>
         </div>
       )}
@@ -68,11 +75,21 @@ const VatBreakdown = ({
               </div>
 
               <div className="grid grid-cols-2">
-                <div className="text-gray-600">VATable Amount:</div>
+                <div className="text-gray-600">VATable Amount (7.5%):</div>
                 <div className="font-medium text-right">
                   ₦{formatCurrency(vatableTotal)}
                   <span className="text-xs text-gray-500 ml-1">
                     ({getPercentage(vatableTotal, totalCredit)}%)
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2">
+                <div className="text-gray-600">VAT Exempt Amount (0%):</div>
+                <div className="font-medium text-right">
+                  ₦{formatCurrency(exemptTotal)}
+                  <span className="text-xs text-gray-500 ml-1">
+                    ({getPercentage(exemptTotal, totalCredit)}%)
                   </span>
                 </div>
               </div>
@@ -141,10 +158,10 @@ const VatBreakdown = ({
                   </div>
                 </div>
 
-                {/* VATable vs Non-VATable Split */}
-                <div className="grid grid-cols-2 gap-4 mb-8">
-                  <div className="p-3 bg-green-100 rounded relative">
-                    <div className="font-medium">VATable Portion</div>
+                {/* Three-way Split */}
+                <div className="grid grid-cols-3 gap-2 mb-8">
+                  <div className="p-3 bg-blue-100 rounded relative">
+                    <div className="font-medium text-sm">VATable (7.5%)</div>
                     <div className="font-bold">
                       ₦{formatCurrency(vatableTotal)}
                     </div>
@@ -169,8 +186,17 @@ const VatBreakdown = ({
                       </div>
                     )}
                   </div>
+                  <div className="p-3 bg-green-100 rounded">
+                    <div className="font-medium text-sm">VAT Exempt (0%)</div>
+                    <div className="font-bold">
+                      ₦{formatCurrency(exemptTotal)}
+                    </div>
+                    <div className="text-xs">
+                      {getPercentage(exemptTotal, totalCredit)}% of total
+                    </div>
+                  </div>
                   <div className="p-3 bg-gray-100 rounded">
-                    <div className="font-medium">Non-VATable Portion</div>
+                    <div className="font-medium text-sm">Non-VATable</div>
                     <div className="font-bold">
                       ₦{formatCurrency(nonVatableTotal)}
                     </div>
@@ -210,7 +236,9 @@ const VatBreakdown = ({
                       No VAT Applied
                     </div>
                     <div className="text-xs text-yellow-600">
-                      All credit transactions are marked as non-VATable
+                      {hasOnlyExempt
+                        ? "All transactions are VAT Exempt (0%)"
+                        : "No VATable transactions selected"}
                     </div>
                   </div>
                 )}
@@ -237,18 +265,63 @@ const VatBreakdown = ({
           </div>
         </div>
 
+        {/* VAT Status Explanation */}
+        <div className="mt-4 bg-blue-50 p-3 rounded text-sm">
+          <h5 className="font-medium text-blue-800 mb-2">
+            VAT Status Explanations:
+          </h5>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white p-2 rounded shadow-sm">
+              <div className="flex items-center mb-1">
+                <span className="w-3 h-3 inline-block bg-blue-100 border border-blue-500 rounded-full mr-2"></span>
+                <span className="font-medium text-blue-700">
+                  VATable (7.5%)
+                </span>
+              </div>
+              <p className="text-xs text-gray-600">
+                Standard-rated goods/services subject to 7.5% VAT
+              </p>
+            </div>
+            <div className="bg-white p-2 rounded shadow-sm">
+              <div className="flex items-center mb-1">
+                <span className="w-3 h-3 inline-block bg-green-100 border border-green-500 rounded-full mr-2"></span>
+                <span className="font-medium text-green-700">
+                  VAT Exempt (0%)
+                </span>
+              </div>
+              <p className="text-xs text-gray-600">
+                Zero-rated or exempt items like exports or essential goods
+              </p>
+            </div>
+            <div className="bg-white p-2 rounded shadow-sm">
+              <div className="flex items-center mb-1">
+                <span className="w-3 h-3 inline-block bg-gray-100 border border-gray-500 rounded-full mr-2"></span>
+                <span className="font-medium text-gray-700">Non-VATable</span>
+              </div>
+              <p className="text-xs text-gray-600">
+                Transactions outside VAT scope like personal or non-commercial
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Note */}
         <div className="mt-4 bg-blue-50 p-3 rounded text-sm text-blue-800">
           <p>
             <strong>Note:</strong> VAT is only applied to transactions that have
-            been marked as VATable. You can select which credit transactions are
-            subject to VAT in the transaction selector above. The standard
-            Nigerian VAT rate of 7.5% is applied to all VATable transactions.
+            been marked as VATable. You can select the appropriate VAT status
+            for each credit transaction in the transaction selector above. The
+            standard Nigerian VAT rate of 7.5% is applied to all VATable
+            transactions, while Exempt transactions are reported at 0% for FIRS
+            filing.
           </p>
-          {allNonVATable && (
+          {hasNoVATable && (
             <p className="mt-2">
-              <strong>Currently:</strong> All credit transactions are marked as
-              non-VATable, so no VAT is being calculated.
+              <strong>Currently:</strong>
+              {hasOnlyExempt &&
+                " All applicable transactions are marked as VAT Exempt (0%), so no VAT is being calculated."}
+              {hasAllNonVATable &&
+                " All transactions are marked as Non-VATable, so no VAT is being calculated."}
             </p>
           )}
         </div>
