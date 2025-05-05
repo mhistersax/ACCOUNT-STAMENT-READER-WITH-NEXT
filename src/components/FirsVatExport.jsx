@@ -1,5 +1,5 @@
 // src/components/FirsVatExport.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 
 const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
@@ -7,6 +7,20 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
   const [exportSuccess, setExportSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isOpen, setIsOpen] = useState(true); // Start expanded by default
+  const [readyTransactions, setReadyTransactions] = useState(0);
+
+  // Update ready transactions count whenever vatableSelections changes
+  useEffect(() => {
+    // Count all credit transactions
+    const creditTransactionCount = transactions
+      ? transactions.filter((tx) => tx && tx.credit > 0).length
+      : 0;
+
+    setReadyTransactions(creditTransactionCount);
+
+    // Reset states when selections change
+    setErrorMessage("");
+  }, [transactions, vatableSelections]);
 
   // Function to export VATable transactions to FIRS format
   const exportToFirsFormat = () => {
@@ -15,7 +29,6 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
       setErrorMessage("");
 
       // Determine which transactions to export
-      // If we have a vatableTotal > 0, export all credit transactions
       const creditTransactions = transactions.filter(
         (tx) => tx && tx.credit > 0
       );
@@ -48,7 +61,23 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
         const itemCost = transaction.credit || 0;
         const itemDescription =
           transaction.reference || transaction.narration || "Transaction";
-        const vatStatus = "VATable"; // All selected transactions are VATable
+
+        // Determine VAT status based on selections
+        // If we have vatableSelections data for this transaction, use it
+        // Otherwise default to "VATable"
+        let vatStatus = "VATable";
+
+        // If we have specific VATable info for this transaction, use it
+        if (
+          vatableSelections &&
+          typeof vatableSelections === "object" &&
+          "vatableTotal" in vatableSelections
+        ) {
+          // If no transactions are VATable, mark as non-VATable
+          if (vatableSelections.vatableTotal === 0) {
+            vatStatus = "Non-VATable";
+          }
+        }
 
         return [
           beneficiaryName,
@@ -89,13 +118,13 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
     }
   };
 
-  // Count credit transactions
-  const creditTransactionCount = transactions
-    ? transactions.filter((tx) => tx && tx.credit > 0).length
-    : 0;
-
   // Determine if export should be enabled (if there are any credit transactions)
-  const shouldEnableExport = creditTransactionCount > 0;
+  const shouldEnableExport = readyTransactions > 0;
+
+  // Debug output to help diagnose issues
+  const debugVatSelections = () => {
+    console.log("Current VATable selections:", vatableSelections);
+  };
 
   return (
     <div className="bg-white rounded-lg shadow p-4 mb-6 border-l-4 border-blue-500">
@@ -107,7 +136,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
         <div className="flex items-center">
           {shouldEnableExport && (
             <span className="bg-blue-100 text-blue-800 text-xs font-medium mr-2 px-2.5 py-0.5 rounded">
-              {creditTransactionCount} transactions ready
+              {readyTransactions} transactions ready
             </span>
           )}
           <button className="text-blue-500 focus:outline-none">
@@ -215,7 +244,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                       ></path>
                     </svg>
                     <span>
-                      {creditTransactionCount} transactions ready for export
+                      {readyTransactions} transactions ready for export
                     </span>
                   </div>
                 ) : (
@@ -366,6 +395,16 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                 All credit transactions will be included in the FIRS VAT export
                 file.
               </p>
+
+              {vatableSelections &&
+                vatableSelections.vatableTotal === 0 &&
+                vatableSelections.totalCredit > 0 && (
+                  <p className="mt-2 ml-6 text-orange-700 font-medium">
+                    Currently, all transactions are marked as non-VATable. They
+                    will still be included in the export but will be marked with
+                    "Non-VATable" status.
+                  </p>
+                )}
             </div>
           </div>
         </>
