@@ -1,3 +1,4 @@
+"use client";
 // src/components/FirsVatExport.jsx
 import React, { useState, useEffect } from "react";
 import * as XLSX from "xlsx";
@@ -7,104 +8,66 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
   const [exportSuccess, setExportSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isOpen, setIsOpen] = useState(true); // Start expanded by default
-  const [readyTransactions, setReadyTransactions] = useState(0);
+  const [readyTransactions, setReadyTransactions] = useState(0); // Total credit transactions
   const [statsSummary, setStatsSummary] = useState({
     vatable: 0,
-    exempt: 0,
-    nonVatable: 0,
+    zeroRated: 0,
+    vatExempt: 0,
     total: 0,
+    unmapped: 0, // Stat to track unmapped transactions (defaulted to VAT EXEMPT)
   });
+  const DEBUG = true; // Debug mode for development - set to true to see console logs
 
-  // Update ready transactions count whenever vatableSelections changes
+  // Update ready transactions count and statistics whenever transactions or vatableSelections change
   useEffect(() => {
-    // Count all credit transactions
-    const creditTransactionCount = transactions
-      ? transactions.filter((tx) => tx && tx.credit > 0).length
-      : 0;
+    // Count all valid credit transactions that have an ID
+    const creditTransactionsWithId = transactions
+      ? transactions.filter((tx) => tx && tx.credit > 0 && tx.id)
+      : [];
+    const creditTransactionCount = creditTransactionsWithId.length;
 
     setReadyTransactions(creditTransactionCount);
 
-    // Calculate statistics from vatableSelections
-    if (vatableSelections && typeof vatableSelections === "object") {
-      // For the new three-way selection system
-      if (vatableSelections.vatStatusMap) {
-        // Count transactions by status
-        const stats = { vatable: 0, exempt: 0, nonVatable: 0, total: 0 };
+    const stats = {
+      vatable: 0,
+      zeroRated: 0,
+      vatExempt: 0,
+      total: creditTransactionCount, // Total credit transactions considered for export
+      unmapped: 0, // Transactions that don't have a specific status in the map
+    };
 
-        // Count status types
-        Object.values(vatableSelections.vatStatusMap).forEach((status) => {
-          if (status === "vatable") stats.vatable++;
-          else if (status === "exempt") stats.exempt++;
-          else if (status === "nonVatable") stats.nonVatable++;
-        });
+    if (vatableSelections && vatableSelections.vatStatusMap) {
+      creditTransactionsWithId.forEach((transaction) => {
+        const status = vatableSelections.vatStatusMap[transaction.id];
 
-        stats.total = stats.vatable + stats.exempt + stats.nonVatable;
-        setStatsSummary(stats);
-      }
-      // For backwards compatibility with the previous checkbox system
-      else if ("vatableTotal" in vatableSelections) {
-        // We don't have individual counts, just totals
-        setStatsSummary({
-          vatable:
-            vatableSelections.vatableTotal > 0 ? creditTransactionCount : 0,
-          exempt: 0,
-          nonVatable:
-            vatableSelections.vatableTotal === 0 ? creditTransactionCount : 0,
-          total: creditTransactionCount,
-        });
-      }
+        if (status === "vatable") {
+          stats.vatable++;
+        } else if (status === "zeroRated") {
+          stats.zeroRated++;
+        } else if (status === "vatExempt" || status === "nonVatable") {
+          // Both internal 'vatExempt' and 'nonVatable' map to FIRS VAT EXEMPT for reporting
+          stats.vatExempt++;
+        } else {
+          // If transaction has an ID but no specific status in the map, it's unmapped
+          stats.unmapped++;
+          stats.vatExempt++; // Unmapped transactions will also default to VAT EXEMPT
+        }
+      });
+    } else {
+      // If vatableSelections or vatStatusMap is missing, all credit transactions are effectively unmapped/defaulted
+      stats.unmapped = creditTransactionCount;
+      stats.vatExempt = creditTransactionCount; // All will default to VAT EXEMPT
     }
 
-    // Reset states when selections change
-    setErrorMessage("");
-  }, [transactions, vatableSelections]);
+    setStatsSummary(stats);
 
-  // Helper function to get consistent transaction identifier
-  const getTransactionIdentifier = (transaction) => {
-    if (!transaction) return null;
-
-    return (
-      transaction.id ||
-      (transaction.reference && transaction.reference.toString()) ||
-      JSON.stringify({
-        date: transaction.date,
-        narration: transaction.narration,
-        credit: transaction.credit,
-      })
-    );
-  };
-
-  // Find UUID for a transaction
-  const findTransactionUUID = (transaction, vatStatusMap) => {
-    if (!transaction || !vatStatusMap) return null;
-
-    const transactionIdentifier = getTransactionIdentifier(transaction);
-
-    // Look for a matching transaction in the vatStatusMap
-    // First, try direct lookup if transaction has id
-    if (transaction.id && vatStatusMap[transaction.id]) {
-      return transaction.id;
+    if (DEBUG) {
+      console.log("FirsVatExport useEffect - Stats Summary:", stats);
+      console.log("Vatable Selections for current account:", vatableSelections);
     }
 
-    // Otherwise, search for a match
-    for (const [uuid, status] of Object.entries(
-      vatableSelections.vatStatusMap || {}
-    )) {
-      // This is a simplified version. In your actual code, you need to use
-      // the same logic that VatableTransactionSelector uses to generate UUIDs
-      if (
-        uuid.includes(transaction.id) ||
-        (transaction.reference &&
-          uuid.includes(transaction.reference.toString())) ||
-        uuid.includes(transaction.date) ||
-        uuid.includes(transaction.narration)
-      ) {
-        return uuid;
-      }
-    }
-
-    return null;
-  };
+    setErrorMessage(""); // Reset error message on selection change
+  }, [transactions, vatableSelections, DEBUG]); // Depend on DEBUG if its change should trigger re-eval
 
   // Function to export VATable transactions to FIRS format
   const exportToFirsFormat = () => {
@@ -112,18 +75,16 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
       setIsExporting(true);
       setErrorMessage("");
 
-      // Determine which transactions to export
-      const creditTransactions = transactions.filter(
-        (tx) => tx && tx.credit > 0
+      const creditTransactionsToExport = transactions.filter(
+        (tx) => tx && tx.credit > 0 && tx.id // Only consider valid credit transactions with an ID
       );
 
-      if (creditTransactions.length === 0) {
-        setErrorMessage("No credit transactions available to export");
+      if (creditTransactionsToExport.length === 0) {
+        setErrorMessage("No credit transactions with valid IDs available to export.");
         setIsExporting(false);
         return;
       }
 
-      // Create the workbook
       const wb = XLSX.utils.book_new();
 
       // Define headers according to FIRS VAT filing template
@@ -133,83 +94,83 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
         "item",
         "item_cost",
         "item_description",
-        "vat_status",
+        "vat_status", // This will be the FIRS numerical code
       ];
 
-      // Store unique transactions to avoid duplicates
-      const processedTransactions = new Set();
+      const exportRows = [];
+      let currentExportStats = { // Track stats for the current export run
+        total: 0,
+        vatable: 0,
+        zeroRated: 0,
+        vatExempt: 0,
+        unmapped: 0,
+      };
 
-      // Format transactions for FIRS format
-      const data = creditTransactions
-        .map((transaction) => {
-          // Default values when information is not available
-          const beneficiaryName = transaction.narration || "Customer";
-          const beneficiaryTin = "0"; // Default TIN when not available
-          const item = "Goods/Services";
-          const itemCost = transaction.credit || 0;
-          const itemDescription =
-            transaction.reference || transaction.narration || "Transaction";
+      creditTransactionsToExport.forEach((transaction) => {
+        const beneficiaryName = String(transaction.narration || "Customer").substring(0, 100); // Truncate if too long
+        const beneficiaryTin = "0"; // Default TIN when not available, user to manually update
+        const item = "Sales of Goods/Services"; // Generic item description for FIRS
+        const itemCost = parseFloat(transaction.credit) || 0;
+        const itemDescription = String(transaction.reference || transaction.narration || "Bank Transaction").substring(0, 255); // Truncate if too long
 
-          // Create a unique key for this transaction to avoid duplicates
-          const transactionKey = `${transaction.date}-${transaction.credit}-${
-            transaction.narration || ""
-          }`;
+        let firsVatStatus = 2; // Default to FIRS VAT EXEMPT (Code 2)
+        let internalStatusDebug = "unmapped"; // For internal debug logging
 
-          // Skip if we've already processed this transaction
-          if (processedTransactions.has(transactionKey)) {
-            return null;
-          }
+        if (vatableSelections && vatableSelections.vatStatusMap && transaction.id) {
+          const statusFromMap = vatableSelections.vatStatusMap[transaction.id];
 
-          // Mark this transaction as processed
-          processedTransactions.add(transactionKey);
-
-          // Determine VAT status based on selections
-          let vatStatus = "VATable"; // Default
-
-          // New system with vatStatusMap
-          if (vatableSelections && vatableSelections.vatStatusMap) {
-            // Find the transaction UUID in the vatStatusMap
-            const uuid = findTransactionUUID(
-              transaction,
-              vatableSelections.vatStatusMap
-            );
-
-            if (uuid && vatableSelections.vatStatusMap[uuid]) {
-              const status = vatableSelections.vatStatusMap[uuid];
-
-              // Map internal status to FIRS status codes
-              if (status === "vatable") vatStatus = "VATable";
-              else if (status === "exempt") vatStatus = "Exempt";
-              else if (status === "nonVatable") vatStatus = "Non-VATable";
+          if (statusFromMap) {
+            internalStatusDebug = statusFromMap;
+            if (statusFromMap === "vatable") {
+              firsVatStatus = 0; // FIRS code for VATABLE
+              currentExportStats.vatable++;
+            } else if (statusFromMap === "zeroRated") {
+              firsVatStatus = 1; // FIRS code for ZERO RATED
+              currentExportStats.zeroRated++;
+            } else if (statusFromMap === "vatExempt" || statusFromMap === "nonVatable") {
+              // Both internal "vatExempt" and "nonVatable" map to FIRS VAT EXEMPT
+              firsVatStatus = 2; // FIRS code for VAT EXEMPT
+              currentExportStats.vatExempt++;
+            } else {
+              // Fallback for any unknown status in vatStatusMap
+              firsVatStatus = 2; // Default to VAT EXEMPT (numerical code 2)
+              currentExportStats.unmapped++;
             }
+          } else {
+            // Transaction ID exists but no corresponding status in map (e.g., if somehow missed during selection)
+            firsVatStatus = 2; // Default to VAT EXEMPT (numerical code 2)
+            currentExportStats.unmapped++;
           }
-          // Legacy system with simple VATable/non-VATable
-          else if (
-            vatableSelections &&
-            typeof vatableSelections === "object" &&
-            "vatableTotal" in vatableSelections
-          ) {
-            // If no transactions are VATable, mark as non-VATable
-            if (vatableSelections.vatableTotal === 0) {
-              vatStatus = "Non-VATable";
-            }
-          }
+        } else {
+          // If no vatableSelections or vatStatusMap is provided for the account, or transaction has no ID
+          firsVatStatus = 2; // Default to VAT EXEMPT (numerical code 2)
+          currentExportStats.unmapped++;
+        }
 
-          return [
-            beneficiaryName,
-            beneficiaryTin,
-            item,
-            itemCost,
-            itemDescription,
-            vatStatus,
-          ];
-        })
-        .filter((row) => row !== null); // Remove null entries (duplicates)
+        currentExportStats.total++;
+        exportRows.push([
+          beneficiaryName,
+          beneficiaryTin,
+          item,
+          itemCost,
+          itemDescription,
+          firsVatStatus,
+        ]);
 
-      // Create worksheet with headers
-      const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        if (DEBUG) {
+          console.log(
+            `Export Transaction: ID=${transaction.id}, Narration='${transaction.narration}', ` +
+            `Internal Status='${internalStatusDebug}', FIRS Code=${firsVatStatus}`
+          );
+        }
+      });
 
-      // Add worksheet to workbook
+      if (DEBUG) {
+        console.log("FIRS Export Summary for this run:", currentExportStats);
+      }
+
+      // Create worksheet with headers and data
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
       XLSX.utils.book_append_sheet(wb, ws, "VATable Transactions");
 
       // Generate filename with account info and date
@@ -217,7 +178,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
       const dateStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
       const accountName =
         accountInfo && accountInfo.accountName
-          ? accountInfo.accountName.replace(/\s+/g, "_")
+          ? accountInfo.accountName.replace(/[^a-zA-Z0-9_]/g, "_") // Sanitize for filename
           : "Account";
 
       const filename = `FIRS_VAT_${accountName}_${dateStr}.xlsx`;
@@ -226,6 +187,14 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
       XLSX.writeFile(wb, filename);
 
       setExportSuccess(true);
+
+      // Show warning if there were unmapped transactions in this specific export run
+      if (currentExportStats.unmapped > 0) {
+        setErrorMessage(
+          `Warning: ${currentExportStats.unmapped} credit transactions were not explicitly classified for VAT status (or were marked Non-VATable). These were exported as VAT EXEMPT (Code 2) by default.`
+        );
+      }
+
       setTimeout(() => setExportSuccess(false), 3000);
     } catch (error) {
       console.error("Error exporting to FIRS format:", error);
@@ -293,7 +262,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
             {/* Export Status Summary */}
             <div className="mb-6 bg-blue-50 p-4 rounded-lg">
               <h4 className="text-blue-800 font-medium mb-2">Export Summary</h4>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="bg-white p-3 rounded shadow-sm">
                   <div className="text-xs text-gray-500">
                     Total Transactions
@@ -303,24 +272,66 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                   </div>
                 </div>
                 <div className="bg-white p-3 rounded shadow-sm">
-                  <div className="text-xs text-blue-500">VATable (7.5%)</div>
+                  <div className="text-xs text-blue-500">VATABLE (Code 0)</div>
                   <div className="text-xl font-bold text-blue-600">
                     {statsSummary.vatable}
                   </div>
                 </div>
                 <div className="bg-white p-3 rounded shadow-sm">
-                  <div className="text-xs text-green-500">VAT Exempt (0%)</div>
-                  <div className="text-xl font-bold text-green-600">
-                    {statsSummary.exempt}
+                  <div className="text-xs text-purple-500">
+                    ZERO RATED (Code 1)
+                  </div>
+                  <div className="text-xl font-bold text-purple-600">
+                    {statsSummary.zeroRated}
                   </div>
                 </div>
                 <div className="bg-white p-3 rounded shadow-sm">
-                  <div className="text-xs text-gray-500">Non-VATable</div>
-                  <div className="text-xl font-bold text-gray-600">
-                    {statsSummary.nonVatable}
+                  <div className="text-xs text-green-500">
+                    VAT EXEMPT (Code 2)
+                  </div>
+                  <div className="text-xl font-bold text-green-600">
+                    {statsSummary.vatExempt}
                   </div>
                 </div>
+                {statsSummary.unmapped > 0 && (
+                  <div className="bg-white p-3 rounded shadow-sm">
+                    <div className="text-xs text-orange-500">
+                      Unmapped (Defaulted)
+                    </div>
+                    <div className="text-xl font-bold text-orange-600">
+                      {statsSummary.unmapped}
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Warning about unmapped transactions if any */}
+              {statsSummary.unmapped > 0 && (
+                <div className="mt-3 bg-orange-50 p-3 rounded-md border border-orange-200">
+                  <div className="flex items-start">
+                    <svg
+                      className="w-5 h-5 mr-2 mt-0.5 text-orange-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      ></path>
+                    </svg>
+                    <p className="text-orange-800 text-sm">
+                      <strong>{statsSummary.unmapped}</strong> transactions
+                      could not be explicitly matched to VAT status selections
+                      (or were marked Non-VATable). These will be exported as{" "}
+                      <strong>VAT EXEMPT (Code 2)</strong> by default.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <p className="text-gray-600">
@@ -365,8 +376,8 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
               <div className="bg-gray-50 p-3 rounded border border-gray-200">
                 <span className="text-xs text-gray-500 block">vat_status</span>
                 <span className="text-sm font-medium">
-                  VATable, Exempt, Non-VATable
-                </span>
+                  0: VATABLE, 1: ZERO RATED, 2: VAT EXEMPT
+                </span>{" "}
               </div>
             </div>
 
@@ -389,7 +400,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                       ></path>
                     </svg>
                     <span>
-                      {readyTransactions} transactions ready for export
+                      {readyTransactions} credit transactions ready for export
                     </span>
                   </div>
                 ) : (
@@ -408,7 +419,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                       ></path>
                     </svg>
-                    <span>No credit transactions available</span>
+                    <span>No credit transactions available for export.</span>
                   </div>
                 )}
               </div>
@@ -421,7 +432,7 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                     isExporting
                       ? "bg-gray-400"
                       : "bg-blue-500 hover:bg-blue-600 shadow-sm hover:shadow"
-                  } 
+                  }
                   text-white font-medium py-2 px-4 rounded-md transition-all duration-200 flex items-center
                   ${!shouldEnableExport ? "opacity-50 cursor-not-allowed" : ""}
                 `}
@@ -545,60 +556,38 @@ const FirsVatExport = ({ transactions, vatableSelections, accountInfo }) => {
                 <li className="flex items-center">
                   <span className="w-4 h-4 inline-block bg-blue-100 rounded-full border border-blue-500 mr-2"></span>
                   <span className="text-blue-800 font-medium">
-                    VATable (7.5%)
+                    VATABLE (Code 0)
                   </span>
                   : Standard rate transactions
                 </li>
                 <li className="flex items-center">
-                  <span className="w-4 h-4 inline-block bg-green-100 rounded-full border border-green-500 mr-2"></span>
-                  <span className="text-green-800 font-medium">
-                    VAT Exempt (0%)
-                  </span>
-                  : Zero-rated or exempt transactions
+                  <span className="w-4 h-4 inline-block bg-purple-100 rounded-full border border-purple-500 mr-2"></span>
+                  <span className="text-purple-800 font-medium">
+                    ZERO RATED (Code 1)
+                  </span>{" "}
+                  : Transactions where VAT is 0%, but input VAT can be reclaimed
+                  on related purchases.
                 </li>
                 <li className="flex items-center">
-                  <span className="w-4 h-4 inline-block bg-gray-100 rounded-full border border-gray-500 mr-2"></span>
-                  <span className="text-gray-800 font-medium">Non-VATable</span>
-                  : Transactions outside VAT scope
+                  <span className="w-4 h-4 inline-block bg-green-100 rounded-full border border-green-500 mr-2"></span>{" "}
+                  <span className="text-green-800 font-medium">
+                    VAT EXEMPT (Code 2)
+                  </span>{" "}
+                  : Transactions legally exempt from VAT. Includes internally
+                  classified "Non-VATable" items and unmapped transactions, as
+                  they are not subject to VAT.
                 </li>
               </ul>
 
-              {/* Legacy support for old VATable selection system */}
-              {vatableSelections &&
-                vatableSelections.vatableTotal === 0 &&
-                vatableSelections.totalCredit > 0 && (
-                  <p className="mt-3 ml-6 text-orange-700 font-medium">
-                    Currently, all transactions are marked as non-VATable. They
-                    will still be included in the export but will be marked with
-                    "Non-VATable" status.
-                  </p>
-                )}
-
-              {/* New system with vatStatusMap */}
-              {vatableSelections &&
-                vatableSelections.vatStatusMap &&
-                statsSummary.vatable === 0 &&
-                statsSummary.exempt === 0 &&
-                statsSummary.total > 0 && (
-                  <p className="mt-3 ml-6 text-orange-700 font-medium">
-                    Currently, all transactions are marked as Non-VATable. They
-                    will still be included in the export but will be excluded
-                    from VAT calculations.
-                  </p>
-                )}
-
-              {vatableSelections &&
-                vatableSelections.vatStatusMap &&
-                statsSummary.vatable === 0 &&
-                statsSummary.exempt > 0 &&
-                statsSummary.total > 0 && (
-                  <p className="mt-3 ml-6 text-green-700 font-medium">
-                    Currently, no transactions are marked as VATable (7.5%), but
-                    you have
-                    {statsSummary.exempt} VAT Exempt (0%) transactions that will
-                    be reported with zero-rated VAT status.
-                  </p>
-                )}
+              {statsSummary.unmapped > 0 && (
+                <p className="mt-3 ml-6 text-orange-700 font-medium">
+                  <strong>{statsSummary.unmapped}</strong> transactions don't
+                  have a VAT status assigned or were classified as
+                  "Non-VATable". These will be exported as "VAT EXEMPT" (Code 2)
+                  by default. To explicitly classify, return to the VAT
+                  Selection step.
+                </p>
+              )}
             </div>
           </div>
         </>

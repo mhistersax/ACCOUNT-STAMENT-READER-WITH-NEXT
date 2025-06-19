@@ -6,7 +6,7 @@ const AccountTabs = ({
   accounts,
   activeIndex,
   setActiveIndex,
-  removeAccount,
+  onRemoveAccountRequest, // Changed prop name
 }) => {
   // Truncate long file names for display
   const getDisplayName = (account) => {
@@ -34,13 +34,8 @@ const AccountTabs = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm(
-                        `Remove ${getDisplayName(account)} from the analysis?`
-                      )
-                    ) {
-                      removeAccount(index);
-                    }
+                    // Call the prop to request removal, which will open the dialog in Home.js
+                    onRemoveAccountRequest(index);
                   }}
                   className="ml-1 text-gray-400 hover:text-red-500 focus:outline-none"
                   title="Remove account"
@@ -63,6 +58,9 @@ const AccountTabs = ({
               )}
             </div>
           ))}
+          {/* This "All Accounts" tab button might conflict with the `activeAccountIndex` logic
+              if it's not truly a selectable "account". For now, it's purely display.
+          */}
           <div className="py-3 px-4 text-sm font-medium text-blue-600 border-b-2 border-transparent whitespace-nowrap">
             All Accounts ({accounts.length})
           </div>

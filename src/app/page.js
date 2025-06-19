@@ -1,6 +1,6 @@
 "use client";
-//path: src/app/page.js
-import React, { useState, useEffect } from "react";
+// path: src/app/page.js
+import React, { useState, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -20,6 +20,7 @@ export default function Home() {
   const [activeAccountIndex, setActiveAccountIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  // vatableSelections now stores the full breakdown and the vatStatusMap for each account
   const [vatableSelections, setVatableSelections] = useState({});
   const [processingProgress, setProcessingProgress] = useState(0);
   const [helpExpanded, setHelpExpanded] = useState(false);
@@ -43,7 +44,6 @@ export default function Home() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        // Safety check for reader result
         if (!event.target || !event.target.result) {
           throw new Error("Failed to read file content");
         }
@@ -59,7 +59,6 @@ export default function Home() {
 
         setProcessingProgress(50); // Update progress
 
-        // Validate workbook structure
         if (
           !workbook ||
           !workbook.SheetNames ||
@@ -68,7 +67,6 @@ export default function Home() {
           throw new Error("Invalid Excel file format or empty workbook");
         }
 
-        // Get the first sheet
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
 
@@ -76,7 +74,6 @@ export default function Home() {
           throw new Error("Could not read worksheet data");
         }
 
-        // Convert to JSON with header option off to get raw data
         const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
         if (!Array.isArray(rawData) || rawData.length === 0) {
@@ -85,7 +82,6 @@ export default function Home() {
 
         setProcessingProgress(60); // Update progress
 
-        // Extract account information
         const extractCellValue = (row, col) => {
           if (rawData[row] && rawData[row][col] !== undefined) {
             return rawData[row][col];
@@ -93,7 +89,6 @@ export default function Home() {
           return null;
         };
 
-        // Find transaction table headers
         let headerRowIndex = -1;
         for (let i = 0; i < rawData.length; i++) {
           const row = rawData[i];
@@ -113,7 +108,6 @@ export default function Home() {
           );
         }
 
-        // Map header names to column indices
         const headers = rawData[headerRowIndex];
         const columnIndices = {
           date: headers.indexOf("Date"),
@@ -124,7 +118,6 @@ export default function Home() {
           balance: headers.indexOf("Balance"),
         };
 
-        // Check if essential columns were found
         const missingColumns = [];
         if (columnIndices.date === -1) missingColumns.push("Date");
         if (columnIndices.debit === -1) missingColumns.push("Debit");
@@ -140,7 +133,6 @@ export default function Home() {
 
         setProcessingProgress(70); // Update progress
 
-        // Safely extract account data with fallbacks
         const safeNumber = (value) => {
           const num = Number(value);
           return isNaN(num) ? 0 : num;
@@ -160,85 +152,110 @@ export default function Home() {
           statementPeriod: extractCellValue(5, 2) || "N/A",
         };
 
-        // Extract transactions
         const transactionData = [];
-        let totalCredit = 0;
-        let totalDebit = 0;
+        let totalCreditFromFile = 0; // Use a different name to avoid confusion with VATable total
+        let totalDebitFromFile = 0;
 
-        // Add a unique identifier for each transaction
-        let transactionId = 1;
+        let transactionIdCounter = 1; // Counter for unique IDs
+
+        const initialVatStatusMap = {}; // Map to store initial VAT status for each transaction ID
+        let initialVatableTotal = 0;
+        let initialZeroRatedTotal = 0;
+        let initialVatExemptTotal = 0;
+        let initialNonVatableTotal = 0;
 
         for (let i = headerRowIndex + 1; i < rawData.length; i++) {
           const row = rawData[i];
           if (!row || row.length === 0 || !row[columnIndices.date]) continue;
 
-          // Safely parse credit and debit amounts
           const creditAmount = safeNumber(row[columnIndices.credit]);
           const debitAmount = safeNumber(row[columnIndices.debit]);
 
-          totalCredit += creditAmount;
-          totalDebit += debitAmount;
+          totalCreditFromFile += creditAmount;
+          totalDebitFromFile += debitAmount;
 
-          // Create transaction with a unique ID
-          transactionData.push({
-            id: `tx-${Date.now()}-${transactionId++}`, // Unique ID
+          const txId = `tx-${Date.now()}-${transactionIdCounter++}`; // Generate unique ID
+          const transaction = {
+            id: txId,
             date: row[columnIndices.date],
             narration: row[columnIndices.narration] || "",
             reference: row[columnIndices.reference] || "",
             debit: debitAmount,
             credit: creditAmount,
             balance: safeNumber(row[columnIndices.balance]),
-          });
+          };
+          transactionData.push(transaction);
+
+          // Initialize VAT status for credit transactions to 'vatable' by default
+          if (creditAmount > 0) {
+            initialVatStatusMap[txId] = "vatable";
+            initialVatableTotal += creditAmount;
+          }
         }
 
-        // Validate that we found some transactions
         if (transactionData.length === 0) {
           throw new Error("No valid transactions found in the Excel file");
         }
 
         setProcessingProgress(90); // Update progress
 
-        // Calculate VAT
         const vatRate = 0.075;
-        const vatAmount = totalCredit * vatRate;
-        const creditAfterVat = totalCredit - vatAmount;
+        const initialVatAmount = initialVatableTotal * vatRate;
+        const initialCreditAfterVat = totalCreditFromFile - initialVatAmount;
 
-        // Create new account object
+        const newAccountId = `account-${Date.now()}`;
         const newAccount = {
-          id: `account-${Date.now()}`,
+          id: newAccountId,
           fileName: fileName || "Unnamed Account",
           accountInfo,
           transactions: transactionData,
           calculations: {
-            totalCredit,
-            totalDebit,
-            vatAmount,
-            creditAfterVat,
-            // Initialize with all transactions as VATable by default
-            vatableTotal: totalCredit,
-            nonVatableTotal: 0,
-            vatOnVatableAmount: totalCredit * vatRate,
+            totalCredit: totalCreditFromFile,
+            totalDebit: totalDebitFromFile,
+            // Initial calculations based on default VATable selections
+            vatAmount: initialVatAmount,
+            creditAfterVat: initialCreditAfterVat,
+            vatableTotal: initialVatableTotal,
+            zeroRatedTotal: initialZeroRatedTotal, // Default 0
+            vatExemptTotal: initialVatExemptTotal, // Default 0
+            nonVatableTotal: initialNonVatableTotal, // Default 0
           },
         };
 
         setProcessingProgress(100); // Complete progress
 
-        // Add the new account to the list
         setAccounts((prevAccounts) => {
           const newAccounts = [...prevAccounts, newAccount];
-          // Set active index to the newly added account
           setActiveAccountIndex(newAccounts.length - 1);
           return newAccounts;
         });
 
-        // Show success message
+        // Initialize vatableSelections state for the new account with its default vatStatusMap
+        setVatableSelections((prev) => ({
+          ...prev,
+          [newAccountId]: {
+            vatStatusMap: initialVatStatusMap,
+            vatableTotal: initialVatableTotal,
+            zeroRatedTotal: initialZeroRatedTotal,
+            vatExemptTotal: initialVatExemptTotal,
+            nonVatableTotal: initialNonVatableTotal,
+            totalCredit: totalCreditFromFile,
+            vatAmount: initialVatAmount,
+            creditAfterVat: initialCreditAfterVat,
+            // Include counts for initial FIRS export summary
+            vatableCount: Object.values(initialVatStatusMap).filter(s => s === 'vatable').length,
+            zeroRatedCount: Object.values(initialVatStatusMap).filter(s => s === 'zeroRated').length,
+            vatExemptCount: Object.values(initialVatStatusMap).filter(s => s === 'vatExempt').length,
+            nonVatableCount: Object.values(initialVatStatusMap).filter(s => s === 'nonVatable').length,
+          },
+        }));
+
         toast.success(`Successfully processed ${fileName}`);
       } catch (err) {
         setError(`Error processing Excel file ${fileName}: ${err.message}`);
         console.error("Processing error:", err);
       } finally {
         setIsLoading(false);
-        // Reset progress after a delay to show completion
         setTimeout(() => setProcessingProgress(0), 1000);
       }
     };
@@ -269,7 +286,6 @@ export default function Home() {
 
       const file = files[0];
 
-      // Validate file type
       const fileExt = file.name.split(".").pop().toLowerCase();
       if (fileExt !== "xlsx" && fileExt !== "xls") {
         setError(
@@ -299,7 +315,7 @@ export default function Home() {
 
   const removeAccount = (indexToRemove) => {
     if (indexToRemove < 0 || indexToRemove >= accounts.length) {
-      return; // Invalid index, do nothing
+      return;
     }
 
     setAccounts((prevAccounts) => {
@@ -307,70 +323,70 @@ export default function Home() {
         (_, index) => index !== indexToRemove
       );
 
-      // If the active account is removed, set active to the last account
       if (activeAccountIndex === indexToRemove) {
         setActiveAccountIndex(Math.max(0, newAccounts.length - 1));
       } else if (activeAccountIndex > indexToRemove) {
-        // If an account before the active one is removed, adjust the index
         setActiveAccountIndex(activeAccountIndex - 1);
       }
+
+      // Also remove from vatableSelections
+      setVatableSelections((prevVatSelections) => {
+        const newVatSelections = { ...prevVatSelections };
+        const accountIdToRemove = accounts[indexToRemove].id;
+        delete newVatSelections[accountIdToRemove];
+        return newVatSelections;
+      });
 
       return newAccounts;
     });
 
     toast.info("Account removed from analysis");
+    setDialogProps({ ...dialogProps, isOpen: false }); // Close dialog after confirmation
   };
 
   // Handle updates from VATable transaction selector
   const handleVatableSelectionChange = (accountId, vatableData) => {
-    // Ensure vatableData has all required properties
     if (!vatableData || typeof vatableData !== "object") {
       console.error("Invalid vatableData received", vatableData);
       return;
     }
 
-    // Add safety defaults for all required properties
+    // Ensure vatableData includes all new properties from selector
     const safeVatableData = {
+      vatStatusMap: {},
       vatableTotal: 0,
+      zeroRatedTotal: 0,
+      vatExemptTotal: 0,
       nonVatableTotal: 0,
       vatAmount: 0,
       totalCredit: 0,
-      ...vatableData, // This will override the defaults with actual data if present
+      creditAfterVat: 0,
+      vatableCount: 0,
+      zeroRatedCount: 0,
+      vatExemptCount: 0,
+      nonVatableCount: 0,
+      ...vatableData,
     };
-
-    // Check if we have no VATable transactions but have credit transactions
-    const hasNoVatableTransactions =
-      safeVatableData.vatableTotal === 0 && safeVatableData.totalCredit > 0;
-
-    // If this happens, we might want to show a warning or special UI state
-    if (hasNoVatableTransactions) {
-      console.log(
-        "Warning: No VATable transactions selected, VAT calculation will be zero"
-      );
-    }
 
     setVatableSelections((prev) => ({
       ...prev,
       [accountId]: safeVatableData,
     }));
 
-    // Update the account calculations based on VATable selections
     setAccounts((prevAccounts) => {
       return prevAccounts.map((account) => {
         if (account.id === accountId) {
-          // Get the account's current calculations with defaults for safety
           const currentCalcs = account.calculations || {};
-          const totalCredit =
-            safeVatableData.totalCredit || currentCalcs.totalCredit || 0;
 
-          // Create updated calculations
           const updatedCalculations = {
             ...currentCalcs,
-            totalCredit: totalCredit, // Use the total from the selector which should match
+            totalCredit: safeVatableData.totalCredit, // Use the total from the selector
             vatableTotal: safeVatableData.vatableTotal,
+            zeroRatedTotal: safeVatableData.zeroRatedTotal, // NEW
+            vatExemptTotal: safeVatableData.vatExemptTotal, // NEW
             nonVatableTotal: safeVatableData.nonVatableTotal,
             vatAmount: safeVatableData.vatAmount,
-            creditAfterVat: totalCredit - safeVatableData.vatAmount,
+            creditAfterVat: safeVatableData.creditAfterVat, // Use creditAfterVat directly from selector
           };
 
           return {
@@ -391,76 +407,70 @@ export default function Home() {
       : null;
 
   // Calculate aggregate values across all accounts
-  const aggregateCalculations =
-    accounts.length > 0
-      ? accounts.reduce(
-          (totals, account) => {
-            // Safely access values with defaults if properties don't exist
-            if (!account) return totals;
+  const aggregateCalculations = accounts.length > 0
+    ? accounts.reduce(
+        (totals, account) => {
+          if (!account || !account.calculations) return totals;
 
-            const calculations = account.calculations || {};
+          const calculations = account.calculations; // Already has defaults from Home processing
 
-            totals.totalCredit += calculations.totalCredit || 0;
-            totals.totalDebit += calculations.totalDebit || 0;
-            totals.vatAmount += calculations.vatAmount || 0;
-            totals.creditAfterVat += calculations.creditAfterVat || 0;
+          totals.totalCredit += calculations.totalCredit || 0;
+          totals.totalDebit += calculations.totalDebit || 0;
+          totals.vatAmount += calculations.vatAmount || 0;
+          totals.creditAfterVat += calculations.creditAfterVat || 0;
 
-            // Add VATable specific calculations to aggregated totals
-            const accountVatableTotal =
-              calculations.vatableTotal !== undefined
-                ? calculations.vatableTotal
-                : calculations.totalCredit || 0;
+          // Aggregate the new VAT categories
+          totals.vatableTotal += calculations.vatableTotal || 0;
+          totals.zeroRatedTotal += calculations.zeroRatedTotal || 0; // NEW
+          totals.vatExemptTotal += calculations.vatExemptTotal || 0; // NEW
+          totals.nonVatableTotal += calculations.nonVatableTotal || 0;
 
-            totals.vatableTotal += accountVatableTotal;
-            totals.nonVatableTotal += calculations.nonVatableTotal || 0;
-
-            return totals;
-          },
-          {
-            totalCredit: 0,
-            totalDebit: 0,
-            vatAmount: 0,
-            creditAfterVat: 0,
-            vatableTotal: 0,
-            nonVatableTotal: 0,
-          }
-        )
-      : {
+          return totals;
+        },
+        {
           totalCredit: 0,
           totalDebit: 0,
           vatAmount: 0,
           creditAfterVat: 0,
           vatableTotal: 0,
+          zeroRatedTotal: 0, // Initialize new totals
+          vatExemptTotal: 0, // Initialize new totals
           nonVatableTotal: 0,
-        };
+        }
+      )
+    : {
+        totalCredit: 0,
+        totalDebit: 0,
+        vatAmount: 0,
+        creditAfterVat: 0,
+        vatableTotal: 0,
+        zeroRatedTotal: 0,
+        vatExemptTotal: 0,
+        nonVatableTotal: 0,
+      };
 
   // Filter only credit transactions for the VATable selector
-  const getCreditTransactions = (transactions) => {
+  const getCreditTransactions = useCallback((transactions) => {
     if (!transactions || !Array.isArray(transactions)) {
       return [];
     }
     return transactions.filter(
       (transaction) => transaction && transaction.credit > 0
     );
-  };
+  }, []);
 
   // Add keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Only apply shortcuts when we have accounts loaded
       if (accounts.length === 0) return;
 
       // Export to FIRS - Ctrl+E
       if (e.ctrlKey && e.key === "e" && !e.shiftKey) {
         e.preventDefault();
-        // This would trigger the export functionality
-        // We'd need to pass this function to the FirsVatExport component
-        toast.info("Shortcut detected: Export to FIRS");
+        // Trigger export logic if you have a way to expose it or move it to Home.js
+        // For now, this is just a toast, but in a real app, you'd trigger the FirsVatExport component's function
+        toast.info("Shortcut detected: Export to FIRS (Functionality needs to be wired)");
       }
-
-      // We could add more shortcuts here
-      // Select all VATable transactions - Ctrl+A
-      // Deselect all VATable transactions - Ctrl+Shift+A
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -507,7 +517,8 @@ export default function Home() {
                 <h4 className="font-medium">Select VATable Transactions</h4>
               </div>
               <p className="text-sm text-gray-600 ml-8">
-                Choose which credit transactions should have VAT (7.5%) applied.
+                Choose which credit transactions should have VAT (7.5%) applied
+                and specify their VAT status.
               </p>
             </div>
             <div className="flex-1">
@@ -621,7 +632,7 @@ export default function Home() {
             accounts={accounts}
             activeIndex={activeAccountIndex}
             setActiveIndex={setActiveAccountIndex}
-            removeAccount={handleRemoveAccount}
+            onRemoveAccountRequest={handleRemoveAccount} // Corrected prop name
           />
 
           {/* Quick Stats Dashboard */}
@@ -756,13 +767,16 @@ export default function Home() {
               <AccountSummary accountData={activeAccount.accountInfo} />
 
               {/* VATable Transaction Selector Component */}
-              {activeAccount &&
-                activeAccount.transactions &&
+              {activeAccount.transactions &&
                 activeAccount.transactions.length > 0 && (
                   <VatableTransactionSelector
                     creditTransactions={getCreditTransactions(
                       activeAccount.transactions
                     )}
+                    // Pass the vatStatusMap for the current account
+                    vatStatusMap={
+                      vatableSelections[activeAccount.id]?.vatStatusMap || {}
+                    }
                     onVatableSelectionChange={(vatableData) =>
                       handleVatableSelectionChange(
                         activeAccount.id,
@@ -773,29 +787,23 @@ export default function Home() {
                 )}
 
               {/* FIRS VAT Export Component */}
-              {activeAccount &&
-                activeAccount.transactions &&
+              {activeAccount.transactions &&
                 activeAccount.transactions.length > 0 && (
                   <FirsVatExport
                     transactions={activeAccount.transactions}
-                    vatableSelections={
-                      vatableSelections[activeAccount.id] || {}
-                    }
+                    // Pass the full vatableSelections object for the active account
+                    vatableSelections={vatableSelections[activeAccount.id] || {}}
                     accountInfo={activeAccount.accountInfo}
                   />
                 )}
 
-              {/* Fixed: Pass individual properties instead of an object */}
+              {/* Vat Breakdown Component (now receives new props) */}
               <VatBreakdown
                 totalCredit={activeAccount.calculations.totalCredit || 0}
-                vatableTotal={
-                  activeAccount.calculations.vatableTotal !== undefined
-                    ? activeAccount.calculations.vatableTotal
-                    : activeAccount.calculations.totalCredit || 0
-                }
-                nonVatableTotal={
-                  activeAccount.calculations.nonVatableTotal || 0
-                }
+                vatableTotal={activeAccount.calculations.vatableTotal || 0}
+                zeroRatedTotal={activeAccount.calculations.zeroRatedTotal || 0} // NEW PROP
+                vatExemptTotal={activeAccount.calculations.vatExemptTotal || 0} // NEW PROP
+                nonVatableTotal={activeAccount.calculations.nonVatableTotal || 0}
                 vatAmount={activeAccount.calculations.vatAmount || 0}
                 creditAfterVat={activeAccount.calculations.creditAfterVat || 0}
               />
@@ -856,10 +864,11 @@ export default function Home() {
                       How do I select which transactions are VATable?
                     </h4>
                     <p className="text-gray-600 text-sm">
-                      Use the checkboxes in the &quot;Select VATable Credit
-                      Transactions&quot; section to mark which transactions should
-                      have the 7.5% VAT rate applied. By default, all credit
-                      transactions are selected as VATable.
+                      Use the radio buttons in the &quot;Select VAT Status for
+                      Credit Transactions&quot; section to mark each credit
+                      transaction as VATable (7.5%), Zero-Rated (0%), VAT Exempt
+                      (0%), or Non-VATable. By default, all credit transactions
+                      are marked as VATable.
                     </p>
                   </div>
 
@@ -869,9 +878,10 @@ export default function Home() {
                     </h4>
                     <p className="text-gray-600 text-sm">
                       FIRS requires VAT filings to include specific information
-                      about each transaction. Use the &quot;FIRS VAT Export&quot; feature
-                      to generate an Excel file in the required format. You&apos;ll
-                      need to add customer TIN numbers before submission.
+                      about each transaction. Use the &quot;FIRS VAT Export&quot;
+                      feature to generate an Excel file in the required format.
+                      You&apos;ll need to add customer TIN numbers before
+                      submission.
                     </p>
                   </div>
 
@@ -882,8 +892,8 @@ export default function Home() {
                     <p className="text-gray-600 text-sm">
                       Yes, you can upload multiple statements and switch between
                       them using the tabs at the top. The &quot;Combined
-                      Calculations&quot; section shows aggregated totals across all
-                      your accounts.
+                      Calculations&quot; section shows aggregated totals across
+                      all your accounts.
                     </p>
                   </div>
 

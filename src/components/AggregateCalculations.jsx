@@ -5,6 +5,29 @@ import React, { useState } from "react";
 const AggregateCalculations = ({ calculations, accountCount }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Helper for safe number formatting
+  const formatCurrency = (amount) => {
+    const numericAmount = Number(amount);
+    if (isNaN(numericAmount)) {
+      return "0.00";
+    }
+    return numericAmount.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2, // Ensure consistent decimal places
+    });
+  };
+
+  // Helper for percentage calculation with zero division safety
+  const getPercentage = (value, total) => {
+    const numericValue = Number(value);
+    const numericTotal = Number(total);
+
+    if (isNaN(numericValue) || isNaN(numericTotal) || numericTotal === 0) {
+      return "0.00%";
+    }
+    return ((numericValue / numericTotal) * 100).toFixed(2) + "%";
+  };
+
   return (
     <div className="bg-white rounded-lg shadow mb-6 overflow-hidden">
       <div
@@ -56,30 +79,21 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
             <div className="bg-green-50 p-4 rounded border-l-4 border-green-500">
               <div className="text-sm text-gray-600">Total Combined Credit</div>
               <div className="font-bold text-green-700">
-                ₦
-                {calculations.totalCredit.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                })}
+                ₦{formatCurrency(calculations.totalCredit)}
               </div>
             </div>
 
             <div className="bg-red-50 p-4 rounded border-l-4 border-red-500">
               <div className="text-sm text-gray-600">Total Combined Debit</div>
               <div className="font-bold text-red-700">
-                ₦
-                {calculations.totalDebit.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                })}
+                ₦{formatCurrency(calculations.totalDebit)}
               </div>
             </div>
 
             <div className="bg-blue-50 p-4 rounded border-l-4 border-blue-500">
               <div className="text-sm text-gray-600">Combined VAT (7.5%)</div>
               <div className="font-bold text-blue-700">
-                ₦
-                {calculations.vatAmount.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                })}
+                ₦{formatCurrency(calculations.vatAmount)}
               </div>
             </div>
 
@@ -88,10 +102,7 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                 Combined Credit After VAT
               </div>
               <div className="font-bold text-purple-700">
-                ₦
-                {calculations.creditAfterVat.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                })}
+                ₦{formatCurrency(calculations.creditAfterVat)}
               </div>
             </div>
           </div>
@@ -117,12 +128,10 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                     Gross Credit
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-bold">
-                    {calculations.totalCredit.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
+                    {formatCurrency(calculations.totalCredit)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    100.00%
+                    {getPercentage(calculations.totalCredit, calculations.totalCredit)}
                   </td>
                 </tr>
                 <tr>
@@ -130,17 +139,10 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                     VAT (7.5%)
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-medium">
-                    {calculations.vatAmount.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
+                    {formatCurrency(calculations.vatAmount)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    {(calculations.totalCredit > 0
-                      ? (calculations.vatAmount / calculations.totalCredit) *
-                        100
-                      : 0
-                    ).toFixed(2)}
-                    %
+                    {getPercentage(calculations.vatAmount, calculations.totalCredit)}
                   </td>
                 </tr>
                 <tr className="bg-gray-50">
@@ -148,18 +150,10 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                     Net Credit After VAT
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600 font-bold">
-                    {calculations.creditAfterVat.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
+                    {formatCurrency(calculations.creditAfterVat)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    {(calculations.totalCredit > 0
-                      ? (calculations.creditAfterVat /
-                          calculations.totalCredit) *
-                        100
-                      : 0
-                    ).toFixed(2)}
-                    %
+                    {getPercentage(calculations.creditAfterVat, calculations.totalCredit)}
                   </td>
                 </tr>
                 <tr>
@@ -167,17 +161,10 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                     Total Debit
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-medium">
-                    {calculations.totalDebit.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                    })}
+                    {formatCurrency(calculations.totalDebit)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    {(calculations.totalCredit > 0
-                      ? (calculations.totalDebit / calculations.totalCredit) *
-                        100
-                      : 0
-                    ).toFixed(2)}
-                    %
+                    {getPercentage(calculations.totalDebit, calculations.totalCredit)}
                   </td>
                 </tr>
                 <tr className="bg-gray-50">
@@ -185,19 +172,15 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
                     Net (After VAT and Debit)
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold">
-                    {(
+                    {formatCurrency(
                       calculations.creditAfterVat - calculations.totalDebit
-                    ).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900">
-                    {(calculations.totalCredit > 0
-                      ? ((calculations.creditAfterVat -
-                          calculations.totalDebit) /
-                          calculations.totalCredit) *
-                        100
-                      : 0
-                    ).toFixed(2)}
-                    %
+                    {getPercentage(
+                      calculations.creditAfterVat - calculations.totalDebit,
+                      calculations.totalCredit
+                    )}
                   </td>
                 </tr>
               </tbody>

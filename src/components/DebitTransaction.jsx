@@ -1,5 +1,5 @@
 "use client";
-// DebitTransaction.jsx
+// Modified DebitTransaction.jsx - With updated date format
 import React from "react";
 
 const DebitTransaction = ({ transaction }) => {
@@ -11,7 +11,11 @@ const DebitTransaction = ({ transaction }) => {
             {transaction.narration}
           </div>
           <div className="text-sm text-gray-600">
-            {new Date(transaction.date).toLocaleDateString("en-GB")}
+            {/* Use the formatted date if available, otherwise fall back to original date format */}
+            {transaction.formattedDate ||
+              (transaction.date
+                ? new Date(transaction.date).toLocaleDateString("en-GB")
+                : "")}
           </div>
         </div>
         <div className="text-red-700 font-bold text-lg">
