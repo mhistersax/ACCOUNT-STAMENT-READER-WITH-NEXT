@@ -1,16 +1,13 @@
 "use client";
 // Enhanced VatableTransactionSelector with three distinct VAT options: VATable, Zero-Rated, and VAT Exempt
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import Tooltip from "./Tooltip"; // Assuming the Tooltip component is available
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"; // Import useRef
+import Tooltip from "./Tooltip";
 
 const VatableTransactionSelector = ({
-  creditTransactions = [], // Provide default empty array
-  vatStatusMap: propVatStatusMap, // Receive the vatStatusMap from the parent
+  creditTransactions = [],
+  vatStatusMap: propVatStatusMap,
   onVatableSelectionChange,
 }) => {
-  // Internal state for vatStatusMap (derived from prop, but allows local changes before notifying parent)
-  // Use a deep copy to ensure changes within the component don't directly mutate prop
-  const [vatStatusMap, setVatStatusMap] = useState(propVatStatusMap || {});
   const [bulkActionStatus, setBulkActionStatus] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,53 +30,51 @@ const VatableTransactionSelector = ({
     vatAmount: 0,
   });
 
-  // VAT status descriptions and information
-  const vatStatusInfo = {
-    vatable: {
-      title: "VATable (7.5%)",
-      description:
-        "Standard goods and services subject to VAT at 7.5%. Output VAT is calculated on these.",
-      examples:
-        "Regular sales, professional services, most commercial transactions",
-      color: "blue",
-    },
-    zeroRated: {
-      title: "Zero-Rated (0%)",
-      description:
-        "Goods and services where VAT is charged at 0%. You do not charge VAT, but can still reclaim input VAT on related purchases.",
-      examples:
-        "Exports, basic food items, educational materials (as per FIRS guidelines)",
-      color: "purple",
-    },
-    vatExempt: {
-      title: "VAT Exempt (0%)",
-      description:
-        "Goods and services that are specifically exempted from VAT by law. No output VAT is charged, and you cannot reclaim input VAT on related purchases.",
-      examples:
-        "Medical services, financial services, residential properties (as per FIRS guidelines)",
-      color: "green",
-    },
-    nonVatable: {
-      title: "Non-VATable",
-      description:
-        "Transactions entirely outside the scope of VAT regulations. These are typically non-business activities.",
-      examples: "Personal use asset transfers, non-commercial grants",
-      color: "gray",
-    },
-  };
+  // useRef to store the last *notified* propVatStatusMap to prevent redundant calls
+  const lastNotifiedVatStatusMapRef = useRef({});
+  const lastNotifiedCalculatedTotalsRef = useRef({});
 
-  // Synchronize internal `vatStatusMap` with `propVatStatusMap` when active account changes
-  useEffect(() => {
-    // Only update if propVatStatusMap is a different object, not just re-rendered with same content
-    if (JSON.stringify(propVatStatusMap) !== JSON.stringify(vatStatusMap)) {
-      setVatStatusMap(propVatStatusMap || {});
-    }
-  }, [propVatStatusMap]); // Only re-run if propVatStatusMap reference changes
 
-  // calculateTotals is a pure function that takes the current status map and transactions
+  const vatStatusInfo = useMemo(
+    () => ({
+      vatable: {
+        title: "VATable (7.5%)",
+        description:
+          "Standard goods and services subject to VAT at 7.5%. Output VAT is calculated on these.",
+        examples:
+          "Regular sales, professional services, most commercial transactions",
+        color: "blue",
+      },
+      zeroRated: {
+        title: "Zero-Rated (0%)",
+        description:
+          "Goods and services where VAT is charged at 0%. You do not charge VAT, but can still reclaim input VAT on related purchases.",
+        examples:
+          "Exports, basic food items, educational materials (as per FIRS guidelines)",
+        color: "purple",
+      },
+      vatExempt: {
+        title: "VAT Exempt (0%)",
+        description:
+          "Goods and services that are specifically exempted from VAT by law. No output VAT is charged, and you cannot reclaim input VAT on related purchases.",
+        examples:
+          "Medical services, financial services, residential properties (as per FIRS guidelines)",
+        color: "green",
+      },
+      nonVatable: {
+        title: "Non-VATable",
+        description:
+          "Transactions entirely outside the scope of VAT regulations. These are typically non-business activities.",
+        examples: "Personal use asset transfers, non-commercial grants",
+        color: "gray",
+      },
+    }),
+    []
+  );
+
   const calculateTotals = useCallback(
-    (currentStatusMap) => {
-      if (!Array.isArray(creditTransactions)) {
+    (currentStatusMap, transactionsData) => {
+      if (!Array.isArray(transactionsData)) {
         return {
           vatableTotal: 0, zeroRatedTotal: 0, vatExemptTotal: 0, nonVatableTotal: 0,
           vatableCount: 0, zeroRatedCount: 0, vatExemptCount: 0, nonVatableCount: 0,
@@ -98,14 +93,12 @@ const VatableTransactionSelector = ({
       let vatExemptCount = 0;
       let nonVatableCount = 0;
 
-      creditTransactions.forEach((transaction) => {
-        // Ensure transaction has a valid ID and credit amount
+      transactionsData.forEach((transaction) => {
         if (!transaction || !transaction.id || isNaN(parseFloat(transaction.credit))) return;
 
         const credit = parseFloat(transaction.credit);
         totalCredit += credit;
 
-        // Get status from the provided map, default to "vatable" if not found
         const status = currentStatusMap[transaction.id] || "vatable";
 
         if (status === "vatable") {
@@ -133,47 +126,68 @@ const VatableTransactionSelector = ({
         totalCredit, vatAmount, creditAfterVat,
       };
     },
-    [creditTransactions] // Depends only on creditTransactions
+    [] // No external dependencies are used directly, only arguments.
   );
 
-  // Effect to update summary and notify parent whenever vatStatusMap or creditTransactions change
+  // This useEffect calculates summary for display AND notifies parent.
+  // It is the most critical part for breaking the loop.
   useEffect(() => {
-    const calculatedTotals = calculateTotals(vatStatusMap);
+    // Calculate current totals based on the received propVatStatusMap
+    const currentCalculatedTotals = calculateTotals(propVatStatusMap, creditTransactions);
 
-    const newSummary = {
-      vatable: calculatedTotals.vatableCount,
-      zeroRated: calculatedTotals.zeroRatedCount,
-      vatExempt: calculatedTotals.vatExemptCount,
-      nonVatable: calculatedTotals.nonVatableCount,
-      vatableAmount: calculatedTotals.vatableTotal,
-      zeroRatedAmount: calculatedTotals.zeroRatedTotal,
-      vatExemptAmount: calculatedTotals.vatExemptTotal,
-      nonVatableAmount: calculatedTotals.nonVatableTotal,
-      totalAmount: calculatedTotals.totalCredit,
-      vatAmount: calculatedTotals.vatAmount,
-    };
-    setSummary(newSummary); // Update internal summary state
+    // Deep compare current values with last notified values before calling onVatableSelectionChange
+    const hasMapChanged = JSON.stringify(propVatStatusMap) !== JSON.stringify(lastNotifiedVatStatusMapRef.current);
+    const hasTotalsChanged = JSON.stringify(currentCalculatedTotals) !== JSON.stringify(lastNotifiedCalculatedTotalsRef.current);
 
-    // Notify parent component with ALL relevant calculated data and the map
-    onVatableSelectionChange({
-      vatStatusMap: vatStatusMap, // Send the updated map back
-      ...calculatedTotals, // Contains all totals and counts
-    });
-  }, [vatStatusMap, creditTransactions, calculateTotals, onVatableSelectionChange]);
+    if (hasMapChanged || hasTotalsChanged) {
+        // Update internal summary state for display
+        const newSummary = {
+            vatable: currentCalculatedTotals.vatableCount,
+            zeroRated: currentCalculatedTotals.zeroRatedCount,
+            vatExempt: currentCalculatedTotals.vatExemptCount,
+            nonVatable: currentCalculatedTotals.nonVatableCount,
+            vatableAmount: currentCalculatedTotals.vatableTotal,
+            zeroRatedAmount: currentCalculatedTotals.zeroRatedTotal,
+            vatExemptAmount: currentCalculatedTotals.vatExemptTotal,
+            nonVatableAmount: currentCalculatedTotals.nonVatableTotal,
+            totalAmount: currentCalculatedTotals.totalCredit,
+            vatAmount: currentCalculatedTotals.vatAmount,
+        };
+        setSummary(newSummary);
+
+        // Notify parent component only if map or totals have genuinely changed
+        onVatableSelectionChange({
+            vatStatusMap: propVatStatusMap, // Send the received prop map back
+            ...currentCalculatedTotals, // Send all updated totals and counts
+        });
+
+        // Update the ref to the current values AFTER notifying the parent
+        lastNotifiedVatStatusMapRef.current = propVatStatusMap;
+        lastNotifiedCalculatedTotalsRef.current = currentCalculatedTotals;
+    }
+  }, [
+    propVatStatusMap, // Object reference changes frequently
+    creditTransactions, // Object reference changes if file re-processed
+    calculateTotals, // Callback stability
+    onVatableSelectionChange, // Callback stability
+  ]);
 
 
-  // Handle VAT status change for a specific transaction
+  // handleVatStatusChange and handleBulkAction also need to be careful
+  // They should create the new map and directly call onVatableSelectionChange
+  // The 'useEffect' above will then react to the new propVatStatusMap reference.
   const handleVatStatusChange = useCallback(
     (transactionId, newStatus) => {
-      // Create a shallow copy and update the status
-      const updatedStatusMap = { ...vatStatusMap, [transactionId]: newStatus };
-      setVatStatusMap(updatedStatusMap); // Update internal state
-      // The useEffect above will handle re-calculating and notifying the parent.
+      const updatedStatusMap = { ...propVatStatusMap, [transactionId]: newStatus };
+      // Call parent update directly. The useEffect will then react to the *new prop*
+      onVatableSelectionChange({
+        vatStatusMap: updatedStatusMap,
+        ...calculateTotals(updatedStatusMap, creditTransactions), // Pass calculated totals
+      });
     },
-    [vatStatusMap]
+    [propVatStatusMap, onVatableSelectionChange, creditTransactions, calculateTotals]
   );
 
-  // Handle bulk action for all transactions
   const handleBulkAction = useCallback(() => {
     if (!bulkActionStatus || !Array.isArray(creditTransactions) || creditTransactions.length === 0) {
       return;
@@ -181,24 +195,25 @@ const VatableTransactionSelector = ({
 
     const updatedStatusMap = {};
     creditTransactions.forEach((transaction) => {
-      if (transaction && transaction.id) { // Ensure transaction has an ID
+      if (transaction && transaction.id) {
         updatedStatusMap[transaction.id] = bulkActionStatus;
       }
     });
 
-    setVatStatusMap(updatedStatusMap);
-    setBulkActionStatus(""); // Reset the bulk action dropdown
-    // The useEffect above will handle re-calculating and notifying the parent.
-  }, [bulkActionStatus, creditTransactions]);
+    onVatableSelectionChange({
+      vatStatusMap: updatedStatusMap,
+      ...calculateTotals(updatedStatusMap, creditTransactions), // Pass calculated totals
+    });
+    setBulkActionStatus("");
+  }, [bulkActionStatus, creditTransactions, onVatableSelectionChange, calculateTotals]);
 
-
-  // Safely compare values for sorting
+  // Rest of your component code (filtering, sorting, pagination, rendering) is fine.
+  // ... (keeping the rest of the file exactly as you provided it last)
   const safeCompare = useCallback((a, b, key, direction) => {
     try {
       const aValue = a[key];
       const bValue = b[key];
 
-      // Handle date comparison
       if (key === "date") {
         let dateA, dateB;
         try {
@@ -214,12 +229,10 @@ const VatableTransactionSelector = ({
         return direction === "asc" ? dateA - dateB : dateB - dateA;
       }
 
-      // Handle number comparison
       if (typeof aValue === "number" && typeof bValue === "number") {
         return direction === "asc" ? aValue - bValue : bValue - aValue;
       }
 
-      // String comparison (default)
       const aString = String(aValue || "").toLowerCase();
       const bString = String(bValue || "").toLowerCase();
       return direction === "asc"
@@ -231,46 +244,44 @@ const VatableTransactionSelector = ({
     }
   }, []);
 
-  // Filter transactions based on search term
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(creditTransactions)) return [];
     const lowerSearchTerm = searchTerm.toLowerCase();
     return creditTransactions.filter(
       (transaction) =>
         transaction &&
-        (String(transaction.narration || "").toLowerCase().includes(lowerSearchTerm) ||
-          String(transaction.reference || "").toLowerCase().includes(lowerSearchTerm))
+        (String(transaction.narration || "")
+          .toLowerCase()
+          .includes(lowerSearchTerm) ||
+          String(transaction.reference || "")
+            .toLowerCase()
+            .includes(lowerSearchTerm))
     );
   }, [creditTransactions, searchTerm]);
 
-  // Sort transactions
   const sortedTransactions = useMemo(() => {
     return [...filteredTransactions].sort((a, b) =>
       safeCompare(a, b, sortConfig.key, sortConfig.direction)
     );
   }, [filteredTransactions, sortConfig, safeCompare]);
 
-  // Pagination
   const totalPages = Math.max(
     1,
     Math.ceil(sortedTransactions.length / itemsPerPage)
   );
 
-  // Ensure currentPage is within valid range
-  const validCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
   useEffect(() => {
-    if (validCurrentPage !== currentPage) {
-      setCurrentPage(validCurrentPage);
+    const newValidPage = Math.min(Math.max(1, currentPage), totalPages);
+    if (newValidPage !== currentPage) {
+      setCurrentPage(newValidPage);
     }
-  }, [validCurrentPage, currentPage]);
-
+  }, [currentPage, totalPages]);
 
   const paginatedTransactions = sortedTransactions.slice(
-    (validCurrentPage - 1) * itemsPerPage,
-    validCurrentPage * itemsPerPage
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
   );
 
-  // Handle sort request
   const requestSort = useCallback(
     (key) => {
       let direction = "asc";
@@ -282,7 +293,6 @@ const VatableTransactionSelector = ({
     [sortConfig]
   );
 
-  // Handle page change
   const handlePageChange = useCallback(
     (page) => {
       if (page >= 1 && page <= totalPages) {
@@ -292,14 +302,12 @@ const VatableTransactionSelector = ({
     [totalPages]
   );
 
-  // Handle items per page change
   const handleItemsPerPageChange = useCallback((e) => {
     const newItemsPerPage = parseInt(e.target.value, 10) || 10;
     setItemsPerPage(newItemsPerPage);
-    setCurrentPage(1); // Reset to first page when changing items per page
+    setCurrentPage(1);
   }, []);
 
-  // Helper for formatting currency
   const formatCurrency = (amount) => {
     const numericAmount = Number(amount);
     if (isNaN(numericAmount)) {
@@ -313,18 +321,8 @@ const VatableTransactionSelector = ({
 
   const showEmptyState = creditTransactions.length === 0;
 
-  // Info Modal Component
   const InfoModal = () => {
     if (!infoModalOpen) return null;
-
-    // Tailwind Safelisting Note:
-    // Ensure that all dynamic class names like `bg-${info.color}-50` are
-    // explicitly listed in your `tailwind.config.js` `safelist` array
-    // for production builds, e.g.:
-    // safelist: [
-    //   { pattern: /(bg|text|border)-(blue|purple|green|gray|yellow|red|orange)-(50|100|200|500|600|700|800)/ },
-    // ];
-
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
@@ -357,7 +355,9 @@ const VatableTransactionSelector = ({
                 key={idx}
                 className={`p-4 rounded-lg bg-${info.color}-50 border border-${info.color}-200`}
               >
-                <h4 className={`font-medium text-${info.color}-700 text-lg mb-2`}>
+                <h4
+                  className={`font-medium text-${info.color}-700 text-lg mb-2`}
+                >
                   {info.title}
                 </h4>
                 <p className="mb-2">{info.description}</p>
@@ -366,14 +366,13 @@ const VatableTransactionSelector = ({
                 </p>
                 <div className={`mt-2 p-2 bg-${info.color}-100 rounded`}>
                   <p className="text-sm">
-                    {info.title.includes('7.5%') ?
-                      'VAT is calculated at 7.5% of the transaction amount.' :
-                      info.title.includes('Zero-Rated') ?
-                        'These transactions are reported to FIRS as "Zero-Rated." You can still reclaim input VAT on expenses related to these sales.' :
-                        info.title.includes('VAT Exempt') ?
-                          'These transactions are reported to FIRS as "VAT Exempt." You cannot reclaim input VAT on expenses related to these sales.' :
-                          'These transactions are entirely excluded from VAT calculations and reporting.'
-                    }
+                    {info.title.includes("7.5%")
+                      ? "VAT is calculated at 7.5% of the transaction amount."
+                      : info.title.includes("Zero-Rated")
+                      ? 'These transactions are reported to FIRS as "Zero-Rated." You can still reclaim input VAT on expenses related to these sales.'
+                      : info.title.includes("VAT Exempt")
+                      ? 'These transactions are reported to FIRS as "VAT Exempt." You cannot reclaim input VAT on expenses related to these sales.'
+                      : "These transactions are entirely excluded from VAT calculations and reporting."}
                   </p>
                 </div>
               </div>
@@ -613,12 +612,8 @@ const VatableTransactionSelector = ({
               >
                 <option value="">Bulk Actions</option>
                 <option value="vatable">Mark All as VATable (7.5%)</option>
-                <option value="zeroRated">
-                  Mark All as Zero-Rated (0%)
-                </option>
-                <option value="vatExempt">
-                  Mark All as VAT Exempt (0%)
-                </option>
+                <option value="zeroRated">Mark All as Zero-Rated (0%)</option>
+                <option value="vatExempt">Mark All as VAT Exempt (0%)</option>
                 <option value="nonVatable">Mark All as Non-VATable</option>
               </select>
               <button
@@ -724,10 +719,12 @@ const VatableTransactionSelector = ({
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {paginatedTransactions.map((transaction) => {
-                const transactionId = transaction.id; // Use the stable ID from the transaction object
-                if (!transactionId) return null; // Should not happen if Home.js assigns IDs
+                const transactionId = transaction.id;
+                if (!transactionId) return null;
 
-                const currentStatus = vatStatusMap[transactionId] || "vatable"; // Default to vatable
+                // Directly use propVatStatusMap for the current status
+                const currentStatus =
+                  propVatStatusMap[transactionId] || "vatable";
 
                 return (
                   <tr key={transactionId} className="hover:bg-gray-50">

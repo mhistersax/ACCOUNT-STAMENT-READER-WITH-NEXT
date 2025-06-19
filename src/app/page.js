@@ -153,12 +153,12 @@ export default function Home() {
         };
 
         const transactionData = [];
-        let totalCreditFromFile = 0; // Use a different name to avoid confusion with VATable total
+        let totalCreditFromFile = 0;
         let totalDebitFromFile = 0;
 
-        let transactionIdCounter = 1; // Counter for unique IDs
+        let transactionIdCounter = 1;
 
-        const initialVatStatusMap = {}; // Map to store initial VAT status for each transaction ID
+        const initialVatStatusMap = {};
         let initialVatableTotal = 0;
         let initialZeroRatedTotal = 0;
         let initialVatExemptTotal = 0;
@@ -174,7 +174,7 @@ export default function Home() {
           totalCreditFromFile += creditAmount;
           totalDebitFromFile += debitAmount;
 
-          const txId = `tx-${Date.now()}-${transactionIdCounter++}`; // Generate unique ID
+          const txId = `tx-${Date.now()}-${transactionIdCounter++}`;
           const transaction = {
             id: txId,
             date: row[columnIndices.date],
@@ -186,9 +186,8 @@ export default function Home() {
           };
           transactionData.push(transaction);
 
-          // Initialize VAT status for credit transactions to 'vatable' by default
           if (creditAmount > 0) {
-            initialVatStatusMap[txId] = "vatable";
+            initialVatStatusMap[txId] = "vatable"; // Default to vatable
             initialVatableTotal += creditAmount;
           }
         }
@@ -197,7 +196,7 @@ export default function Home() {
           throw new Error("No valid transactions found in the Excel file");
         }
 
-        setProcessingProgress(90); // Update progress
+        setProcessingProgress(90);
 
         const vatRate = 0.075;
         const initialVatAmount = initialVatableTotal * vatRate;
@@ -212,17 +211,16 @@ export default function Home() {
           calculations: {
             totalCredit: totalCreditFromFile,
             totalDebit: totalDebitFromFile,
-            // Initial calculations based on default VATable selections
             vatAmount: initialVatAmount,
             creditAfterVat: initialCreditAfterVat,
             vatableTotal: initialVatableTotal,
-            zeroRatedTotal: initialZeroRatedTotal, // Default 0
-            vatExemptTotal: initialVatExemptTotal, // Default 0
-            nonVatableTotal: initialNonVatableTotal, // Default 0
+            zeroRatedTotal: initialZeroRatedTotal,
+            vatExemptTotal: initialVatExemptTotal,
+            nonVatableTotal: initialNonVatableTotal,
           },
         };
 
-        setProcessingProgress(100); // Complete progress
+        setProcessingProgress(100);
 
         setAccounts((prevAccounts) => {
           const newAccounts = [...prevAccounts, newAccount];
@@ -242,7 +240,7 @@ export default function Home() {
             totalCredit: totalCreditFromFile,
             vatAmount: initialVatAmount,
             creditAfterVat: initialCreditAfterVat,
-            // Include counts for initial FIRS export summary
+            // Include counts for initial FIRS export summary (if needed by FirsVatExport directly)
             vatableCount: Object.values(initialVatStatusMap).filter(s => s === 'vatable').length,
             zeroRatedCount: Object.values(initialVatStatusMap).filter(s => s === 'zeroRated').length,
             vatExemptCount: Object.values(initialVatStatusMap).filter(s => s === 'vatExempt').length,
@@ -345,7 +343,7 @@ export default function Home() {
   };
 
   // Handle updates from VATable transaction selector
-  const handleVatableSelectionChange = (accountId, vatableData) => {
+  const handleVatableSelectionChange = useCallback((accountId, vatableData) => {
     if (!vatableData || typeof vatableData !== "object") {
       console.error("Invalid vatableData received", vatableData);
       return;
@@ -380,13 +378,13 @@ export default function Home() {
 
           const updatedCalculations = {
             ...currentCalcs,
-            totalCredit: safeVatableData.totalCredit, // Use the total from the selector
+            totalCredit: safeVatableData.totalCredit,
             vatableTotal: safeVatableData.vatableTotal,
-            zeroRatedTotal: safeVatableData.zeroRatedTotal, // NEW
-            vatExemptTotal: safeVatableData.vatExemptTotal, // NEW
+            zeroRatedTotal: safeVatableData.zeroRatedTotal,
+            vatExemptTotal: safeVatableData.vatExemptTotal,
             nonVatableTotal: safeVatableData.nonVatableTotal,
             vatAmount: safeVatableData.vatAmount,
-            creditAfterVat: safeVatableData.creditAfterVat, // Use creditAfterVat directly from selector
+            creditAfterVat: safeVatableData.creditAfterVat,
           };
 
           return {
@@ -397,7 +395,7 @@ export default function Home() {
         return account;
       });
     });
-  };
+  }, []); // Empty dependency array means this function is stable
 
   const activeAccount =
     accounts.length > 0 &&
@@ -412,17 +410,16 @@ export default function Home() {
         (totals, account) => {
           if (!account || !account.calculations) return totals;
 
-          const calculations = account.calculations; // Already has defaults from Home processing
+          const calculations = account.calculations;
 
           totals.totalCredit += calculations.totalCredit || 0;
           totals.totalDebit += calculations.totalDebit || 0;
           totals.vatAmount += calculations.vatAmount || 0;
           totals.creditAfterVat += calculations.creditAfterVat || 0;
 
-          // Aggregate the new VAT categories
           totals.vatableTotal += calculations.vatableTotal || 0;
-          totals.zeroRatedTotal += calculations.zeroRatedTotal || 0; // NEW
-          totals.vatExemptTotal += calculations.vatExemptTotal || 0; // NEW
+          totals.zeroRatedTotal += calculations.zeroRatedTotal || 0;
+          totals.vatExemptTotal += calculations.vatExemptTotal || 0;
           totals.nonVatableTotal += calculations.nonVatableTotal || 0;
 
           return totals;
@@ -433,8 +430,8 @@ export default function Home() {
           vatAmount: 0,
           creditAfterVat: 0,
           vatableTotal: 0,
-          zeroRatedTotal: 0, // Initialize new totals
-          vatExemptTotal: 0, // Initialize new totals
+          zeroRatedTotal: 0,
+          vatExemptTotal: 0,
           nonVatableTotal: 0,
         }
       )
@@ -467,8 +464,6 @@ export default function Home() {
       // Export to FIRS - Ctrl+E
       if (e.ctrlKey && e.key === "e" && !e.shiftKey) {
         e.preventDefault();
-        // Trigger export logic if you have a way to expose it or move it to Home.js
-        // For now, this is just a toast, but in a real app, you'd trigger the FirsVatExport component's function
         toast.info("Shortcut detected: Export to FIRS (Functionality needs to be wired)");
       }
     };
@@ -632,7 +627,7 @@ export default function Home() {
             accounts={accounts}
             activeIndex={activeAccountIndex}
             setActiveIndex={setActiveAccountIndex}
-            onRemoveAccountRequest={handleRemoveAccount} // Corrected prop name
+            onRemoveAccountRequest={handleRemoveAccount}
           />
 
           {/* Quick Stats Dashboard */}
@@ -801,8 +796,8 @@ export default function Home() {
               <VatBreakdown
                 totalCredit={activeAccount.calculations.totalCredit || 0}
                 vatableTotal={activeAccount.calculations.vatableTotal || 0}
-                zeroRatedTotal={activeAccount.calculations.zeroRatedTotal || 0} // NEW PROP
-                vatExemptTotal={activeAccount.calculations.vatExemptTotal || 0} // NEW PROP
+                zeroRatedTotal={activeAccount.calculations.zeroRatedTotal || 0}
+                vatExemptTotal={activeAccount.calculations.vatExemptTotal || 0}
                 nonVatableTotal={activeAccount.calculations.nonVatableTotal || 0}
                 vatAmount={activeAccount.calculations.vatAmount || 0}
                 creditAfterVat={activeAccount.calculations.creditAfterVat || 0}
