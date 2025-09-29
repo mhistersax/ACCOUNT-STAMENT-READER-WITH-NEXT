@@ -1,5 +1,6 @@
 // src/components/ConfirmDialog.jsx
 import React from "react";
+import PropTypes from "prop-types";
 
 const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message }) => {
   if (!isOpen) return null;
@@ -30,6 +31,14 @@ const ConfirmDialog = ({ isOpen, onClose, onConfirm, title, message }) => {
       </div>
     </div>
   );
+};
+
+ConfirmDialog.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onConfirm: PropTypes.func.isRequired,
+  title: PropTypes.string.isRequired,
+  message: PropTypes.string.isRequired,
 };
 
 export default ConfirmDialog;

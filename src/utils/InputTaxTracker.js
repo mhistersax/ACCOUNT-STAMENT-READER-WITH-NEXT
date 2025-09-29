@@ -1,5 +1,6 @@
 // InputTaxTracker.js - Utility for tracking input tax (VAT) on selected debit transactions
 import { formatDateToDDMMYYYY } from "./DateFormatter";
+import { INPUT_TAX_SELECTIONS } from "../lib/storageKeys";
 
 // VAT rate in Nigeria (7.5%)
 const VAT_RATE = 0.075;
@@ -145,7 +146,7 @@ export class InputTaxTracker {
 
     try {
       localStorage.setItem(
-        "inputTaxSelections",
+        INPUT_TAX_SELECTIONS,
         JSON.stringify(this.selectedDebits)
       );
     } catch (e) {
@@ -160,7 +161,7 @@ export class InputTaxTracker {
     }
 
     try {
-      const stored = localStorage.getItem("inputTaxSelections");
+      const stored = localStorage.getItem(INPUT_TAX_SELECTIONS);
       return stored ? JSON.parse(stored) : null;
     } catch (e) {
       console.error("Error loading from localStorage:", e);

@@ -1,6 +1,7 @@
 "use client";
 // AggregateCalculations.jsx
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 
 const AggregateCalculations = ({ calculations, accountCount }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -205,6 +206,16 @@ const AggregateCalculations = ({ calculations, accountCount }) => {
       )}
     </div>
   );
+};
+
+AggregateCalculations.propTypes = {
+  calculations: PropTypes.shape({
+    totalCredit: PropTypes.number,
+    totalDebit: PropTypes.number,
+    vatAmount: PropTypes.number,
+    creditAfterVat: PropTypes.number,
+  }).isRequired,
+  accountCount: PropTypes.number.isRequired,
 };
 
 export default AggregateCalculations;
