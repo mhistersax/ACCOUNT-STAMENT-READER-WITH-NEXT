@@ -47,8 +47,8 @@ const DragDropUpload = ({ onFileSelect, accept = "*", disabled = false }) => {
     <div
       className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
         isDragging
-          ? "border-blue-500 bg-blue-50"
-          : "border-gray-300 hover:border-gray-400"
+          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+          : "border-gray-300 hover:border-gray-400 dark:border-slate-700 dark:hover:border-slate-500"
       } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -65,7 +65,7 @@ const DragDropUpload = ({ onFileSelect, accept = "*", disabled = false }) => {
       />
 
       <svg
-        className="mx-auto h-12 w-12 text-gray-400"
+        className="mx-auto h-12 w-12 text-gray-400 dark:text-slate-500"
         stroke="currentColor"
         fill="none"
         viewBox="0 0 48 48"
@@ -79,13 +79,13 @@ const DragDropUpload = ({ onFileSelect, accept = "*", disabled = false }) => {
         />
       </svg>
 
-      <div className="flex text-sm text-gray-600 mt-2 justify-center">
-        <label className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500">
+      <div className="flex text-sm text-gray-600 mt-2 justify-center dark:text-slate-300">
+        <label className="relative cursor-pointer rounded-md font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
           <span>Upload a file</span>
         </label>
         <p className="pl-1">or drag and drop</p>
       </div>
-      <p className="text-xs text-gray-500 mt-1">
+      <p className="text-xs text-gray-500 mt-1 dark:text-slate-400">
         Excel files only (.xlsx, .xls)
       </p>
     </div>
