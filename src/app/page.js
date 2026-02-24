@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
+import { List } from "react-window";
 import DragDropUpload from "../components/DragDropUpload";
 import { useFileProcessor } from "../hooks/useFileProcessor";
 
@@ -153,6 +154,80 @@ export default function Home() {
       debit: debitCount
     };
   }, [transactions]);
+
+  const tableColumns = useMemo(
+    () => [
+      { key: "date", label: "Date", align: "text-left" },
+      { key: "description", label: "Description", align: "text-left" },
+      { key: "reference", label: "Reference", align: "text-left" },
+      { key: "debit", label: "Debit", align: "text-right" },
+      { key: "credit", label: "Credit", align: "text-right" },
+      { key: "balance", label: "Balance", align: "text-right" },
+      { key: "type", label: "Type", align: "text-left" }
+    ],
+    []
+  );
+
+  const tableGrid = "140px 1.3fr 180px 140px 140px 140px 120px";
+  const listHeight = 600;
+  const rowHeight = 48;
+  const tableMinWidth = "960px";
+  const rowProps = useMemo(
+    () => ({
+      rows: filteredTransactions,
+      tableGrid,
+      tableMinWidth
+    }),
+    [filteredTransactions, tableGrid, tableMinWidth]
+  );
+
+  const Row = ({ ariaAttributes, index, style, rows, tableGrid: grid, tableMinWidth: minWidth }) => {
+    const tx = rows[index];
+    const isCredit = tx.credit > 0;
+    const isEven = index % 2 === 1;
+    return (
+      <div
+        role="row"
+        style={{ ...style, minWidth, gridTemplateColumns: grid }}
+        className={`grid items-center border-b border-slate-200 dark:border-slate-800 ${
+          isEven ? "bg-slate-50 dark:bg-slate-900/70" : "bg-white dark:bg-slate-950/40"
+        } hover:bg-slate-100 dark:hover:bg-slate-800/80`}
+        {...ariaAttributes}
+      >
+        <div role="cell" className="px-4 py-2 whitespace-nowrap">
+          {tx.date ? new Date(tx.date).toLocaleDateString() : "N/A"}
+        </div>
+        <div role="cell" className="px-4 py-2 truncate" title={tx.narration || ""}>
+          {tx.narration || "—"}
+        </div>
+        <div role="cell" className="px-4 py-2 truncate" title={tx.reference || ""}>
+          {tx.reference || "—"}
+        </div>
+        <div role="cell" className="px-4 py-2 text-right text-rose-600">
+          {tx.debit > 0 ? `₦${tx.debit.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
+        </div>
+        <div role="cell" className="px-4 py-2 text-right text-emerald-600">
+          {tx.credit > 0 ? `₦${tx.credit.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
+        </div>
+        <div role="cell" className="px-4 py-2 text-right">
+          {tx.balance !== null && tx.balance !== undefined
+            ? `₦${tx.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+            : "—"}
+        </div>
+        <div role="cell" className="px-4 py-2">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              isCredit
+                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200"
+                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200"
+            }`}
+          >
+            {isCredit ? "Credit" : "Debit"}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   const handleClear = () => {
     setTransactions([]);
@@ -369,60 +444,38 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              <div className="overflow-auto border border-slate-200 rounded-lg dark:border-slate-800">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                    <tr>
-                      <th className="text-left px-4 py-2 font-medium">Date</th>
-                      <th className="text-left px-4 py-2 font-medium">Description</th>
-                      <th className="text-left px-4 py-2 font-medium">Reference</th>
-                      <th className="text-right px-4 py-2 font-medium">Debit</th>
-                      <th className="text-right px-4 py-2 font-medium">Credit</th>
-                      <th className="text-right px-4 py-2 font-medium">Balance</th>
-                      <th className="text-left px-4 py-2 font-medium">Type</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {filteredTransactions.map((tx) => {
-                      const isCredit = tx.credit > 0;
-                      return (
-                        <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                          <td className="px-4 py-2 whitespace-nowrap">
-                            {tx.date ? new Date(tx.date).toLocaleDateString() : "N/A"}
-                          </td>
-                          <td className="px-4 py-2">{tx.narration || "—"}</td>
-                          <td className="px-4 py-2">{tx.reference || "—"}</td>
-                          <td className="px-4 py-2 text-right text-rose-600">
-                            {tx.debit > 0
-                              ? `₦${tx.debit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-2 text-right text-emerald-600">
-                            {tx.credit > 0
-                              ? `₦${tx.credit.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            {tx.balance !== null && tx.balance !== undefined
-                              ? `₦${tx.balance.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                              : "—"}
-                          </td>
-                          <td className="px-4 py-2">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                                isCredit
-                                  ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200"
-                                  : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200"
-                              }`}
-                            >
-                              {isCredit ? "Credit" : "Debit"}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="border border-slate-200 rounded-lg dark:border-slate-800 overflow-x-auto">
+                <div
+                  role="table"
+                  className="min-w-full text-sm"
+                  style={{ minWidth: tableMinWidth }}
+                >
+                  <List
+                    rowCount={filteredTransactions.length}
+                    rowHeight={rowHeight}
+                    rowComponent={Row}
+                    rowProps={rowProps}
+                    overscanCount={10}
+                    style={{ height: listHeight, width: "100%" }}
+                    className="w-full"
+                  >
+                    <div
+                      role="row"
+                      className="grid bg-slate-50 text-slate-600 dark:bg-slate-900 dark:text-slate-300 sticky top-0 z-10 shadow-sm"
+                      style={{ gridTemplateColumns: tableGrid, minWidth: tableMinWidth }}
+                    >
+                      {tableColumns.map((col) => (
+                        <div
+                          key={`header-${col.key}`}
+                          role="columnheader"
+                          className={`px-4 py-2 font-medium ${col.align}`}
+                        >
+                          {col.label}
+                        </div>
+                      ))}
+                    </div>
+                  </List>
+                </div>
               </div>
             )}
           </>

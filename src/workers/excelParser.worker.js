@@ -12,6 +12,30 @@ const safeNumber = (value) => {
   return Number.isNaN(num) ? 0 : num;
 };
 
+const isEmptyCell = (value) => value === null || value === undefined || value === "";
+const normalizeCell = (value) => (typeof value === "string" ? value.trim() : value);
+const isLabelLike = (value) => typeof value === "string" && value.trim().endsWith(":");
+
+const findValueAfterLabel = (rowValues, label) => {
+  if (!rowValues || !label) return null;
+  const normalizedLabel = normalizeCell(label);
+  const indices = [];
+  rowValues.forEach((cell, idx) => {
+    if (normalizeCell(cell) === normalizedLabel) indices.push(idx);
+  });
+  for (let i = indices.length - 1; i >= 0; i -= 1) {
+    const start = indices[i] + 1;
+    for (let j = start; j < rowValues.length; j += 1) {
+      const value = rowValues[j];
+      if (isEmptyCell(value)) continue;
+      if (normalizeCell(value) === normalizedLabel) continue;
+      if (isLabelLike(value)) continue;
+      return value;
+    }
+  }
+  return null;
+};
+
 const toDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -95,26 +119,28 @@ const parseWorkbook = async ({ buffer, fileName, id }) => {
           cell.includes("Transaction Amount (NGN)"))
     );
 
-  let metaSent = false;
+  let lastMetaSignature = null;
   const postMetaIfReady = () => {
-    if (metaSent) return;
     if (!accountDetails.accountName && !accountDetails.accountNumber && !accountDetails.currency) {
       return;
     }
-    metaSent = true;
+    const payload = {
+      accountName: accountDetails.accountName,
+      accountNumber: accountDetails.accountNumber,
+      currency: accountDetails.currency,
+      statementPeriod: accountDetails.statementPeriod,
+      openingBalance: accountDetails.openingBalance,
+      closingBalance: accountDetails.closingBalance,
+      totalDebit: accountDetails.totalDebit,
+      totalCredit: accountDetails.totalCredit
+    };
+    const signature = JSON.stringify(payload);
+    if (signature === lastMetaSignature) return;
+    lastMetaSignature = signature;
     self.postMessage({
       type: "meta",
       id,
-      data: {
-        accountName: accountDetails.accountName,
-        accountNumber: accountDetails.accountNumber,
-        currency: accountDetails.currency,
-        statementPeriod: accountDetails.statementPeriod,
-        openingBalance: accountDetails.openingBalance,
-        closingBalance: accountDetails.closingBalance,
-        totalDebit: accountDetails.totalDebit,
-        totalCredit: accountDetails.totalCredit
-      }
+      data: payload
     });
   };
 
@@ -130,56 +156,59 @@ const parseWorkbook = async ({ buffer, fileName, id }) => {
 
     if (headerRowNumber === -1) {
       if (hasString(rowValues)) {
-        if (!accountDetails.accountName) {
-          const nameIndex = rowValues.indexOf("Account Name:");
-          if (nameIndex !== -1 && rowValues[nameIndex + 1]) {
-            accountDetails.accountName = rowValues[nameIndex + 1];
-          }
+        if (
+          accountDetails.accountName === null ||
+          accountDetails.accountName === undefined ||
+          isLabelLike(accountDetails.accountName)
+        ) {
+          const accountName = findValueAfterLabel(rowValues, "Account Name:");
+          if (accountName) accountDetails.accountName = accountName;
         }
-        if (!accountDetails.accountNumber) {
-          const numberIndex = rowValues.indexOf("Account Number:");
-          if (numberIndex !== -1 && rowValues[numberIndex + 1]) {
-            accountDetails.accountNumber = rowValues[numberIndex + 1];
-          }
+        if (
+          accountDetails.accountNumber === null ||
+          accountDetails.accountNumber === undefined ||
+          isLabelLike(accountDetails.accountNumber)
+        ) {
+          const accountNumber = findValueAfterLabel(rowValues, "Account Number:");
+          if (accountNumber) accountDetails.accountNumber = accountNumber;
         }
-        if (!accountDetails.currency) {
-          const currencyIndex = rowValues.indexOf("Currency:");
-          if (currencyIndex !== -1 && rowValues[currencyIndex + 1]) {
-            accountDetails.currency = rowValues[currencyIndex + 1];
-          }
+        if (
+          accountDetails.currency === null ||
+          accountDetails.currency === undefined ||
+          isLabelLike(accountDetails.currency)
+        ) {
+          const currency = findValueAfterLabel(rowValues, "Currency:");
+          if (currency) accountDetails.currency = currency;
         }
-        if (!accountDetails.statementPeriod) {
-          const dateIndex = rowValues.indexOf("Date:");
-          if (dateIndex !== -1 && rowValues[dateIndex + 1]) {
-            accountDetails.statementPeriod = rowValues[dateIndex + 1];
-          }
+        if (
+          accountDetails.statementPeriod === null ||
+          accountDetails.statementPeriod === undefined ||
+          isLabelLike(accountDetails.statementPeriod)
+        ) {
+          const statementPeriod = findValueAfterLabel(rowValues, "Date:");
+          if (statementPeriod) accountDetails.statementPeriod = statementPeriod;
         }
-        if (!accountDetails.openingBalance) {
-          const openingIndex = rowValues.indexOf("Opening Balance:");
-          if (openingIndex !== -1 && rowValues[openingIndex + 1]) {
-            accountDetails.openingBalance = safeNumber(rowValues[openingIndex + 1]);
-          }
+        if (accountDetails.openingBalance === null || accountDetails.openingBalance === undefined) {
+          const openingBalance = findValueAfterLabel(rowValues, "Opening Balance:");
+          if (openingBalance !== null) accountDetails.openingBalance = safeNumber(openingBalance);
         }
-        if (!accountDetails.closingBalance) {
-          const closingIndex = rowValues.indexOf("Closing Balance:");
-          if (closingIndex !== -1 && rowValues[closingIndex + 1]) {
-            accountDetails.closingBalance = safeNumber(rowValues[closingIndex + 1]);
-          }
+        if (accountDetails.closingBalance === null || accountDetails.closingBalance === undefined) {
+          const closingBalance = findValueAfterLabel(rowValues, "Closing Balance:");
+          if (closingBalance !== null) accountDetails.closingBalance = safeNumber(closingBalance);
         }
-        if (!accountDetails.totalDebit) {
-          const debitIndex = rowValues.indexOf("Total Debit:");
-          if (debitIndex !== -1 && rowValues[debitIndex + 1]) {
-            accountDetails.totalDebit = safeNumber(rowValues[debitIndex + 1]);
-          }
+        if (accountDetails.totalDebit === null || accountDetails.totalDebit === undefined) {
+          const totalDebit = findValueAfterLabel(rowValues, "Total Debit:");
+          if (totalDebit !== null) accountDetails.totalDebit = safeNumber(totalDebit);
         }
-        if (!accountDetails.totalCredit) {
-          const creditIndex = rowValues.indexOf("Total Credit:");
-          if (creditIndex !== -1 && rowValues[creditIndex + 1]) {
-            accountDetails.totalCredit = safeNumber(rowValues[creditIndex + 1]);
-          }
+        if (accountDetails.totalCredit === null || accountDetails.totalCredit === undefined) {
+          const totalCredit = findValueAfterLabel(rowValues, "Total Credit:");
+          if (totalCredit !== null) accountDetails.totalCredit = safeNumber(totalCredit);
         }
 
         if (hasExtendedHeader(rowValues)) {
+          const balanceAfterIndex = rowValues.findIndex(
+            (h) => h && typeof h === "string" && h.includes("Balance After")
+          );
           headerRowNumber = row.number;
           isExtendedFormat = true;
           columnIndices = {
@@ -188,7 +217,10 @@ const parseWorkbook = async ({ buffer, fileName, id }) => {
             reference: rowValues.findIndex((h) => h && (h.includes("Transaction Ref") || h.includes("Reference"))),
             debit: rowValues.indexOf("Settlement Debit (NGN)"),
             credit: rowValues.indexOf("Settlement Credit (NGN)"),
-            balance: rowValues.findIndex((h) => h && (h.includes("Balance After") || h.includes("Balance"))),
+            balance:
+              balanceAfterIndex !== -1
+                ? balanceAfterIndex
+                : rowValues.findIndex((h) => h && typeof h === "string" && h.includes("Balance")),
             accountName: rowValues.indexOf("Account Name"),
             transactionType: rowValues.indexOf("Transaction Type"),
             transactionAmount: rowValues.indexOf("Transaction Amount (NGN)"),
@@ -314,6 +346,8 @@ const parseWorkbook = async ({ buffer, fileName, id }) => {
 
   flushBatch();
   postProgress(90, id);
+
+  postMetaIfReady();
 
   const accountInfo = {
     accountName:
