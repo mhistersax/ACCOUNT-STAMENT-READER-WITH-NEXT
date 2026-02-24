@@ -1,134 +1,97 @@
-# Multi-Account Statement Reader
+# Account Statement Reader
 
-A Next.js application for processing and analyzing financial statements from multiple accounts with VAT calculation capabilities.
-
-![Project Screenshot](https://via.placeholder.com/800x450.png?text=Multi-Account+Statement+Reader)
+A Next.js app for reading a single Excel account statement, extracting account details, and browsing transactions with fast filtering and smooth UX.
 
 ## Overview
 
-The Multi-Account Statement Reader is a web application designed to help businesses manage and analyze bank statement data across multiple accounts. It provides a centralized platform for uploading Excel-based account statements, processing transactions, and performing VAT calculations (with a default rate of 7.5%).
+Account Statement Reader lets you upload a bank statement (.xlsx/.xls), parses it in a web worker, and displays account metadata plus a virtualized transaction list. It’s designed for large statements while keeping the UI responsive.
 
-### Key Features
+## Key Features
 
-- **Multiple Account Support**: Upload and analyze multiple account statements simultaneously
-- **VAT Management**: Flexibly select which transactions are VATable
-- **Transaction Visualization**: Categorize and display credit and debit transactions
-- **Aggregated Calculations**: View combined financial data across all accounts
-- **Responsive Design**: Fully responsive UI using Tailwind CSS
-- **Excel File Processing**: Read and process Excel files (.xlsx, .xls)
+- **Excel parsing in a worker** for non-blocking uploads
+- **Account metadata extraction** (name, number, currency, period, balances)
+- **Credit/Debit filters** with live totals
+- **Virtualized table** for fast scrolling on large datasets
+- **Sticky header + zebra striping** for readability
+- **IndexedDB persistence** to save and reload statements
+- **Dark / Light / System theme toggle**
+- **Loading skeletons and empty states** for better UX
+
+## Tech Stack
+
+- Next.js + React
+- Tailwind CSS
+- ExcelJS (parsing)
+- react-window (virtualized list)
+- idb (IndexedDB wrapper)
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v14.0 or higher)
-- npm (v6.0 or higher) or yarn
+- Node.js (v18+ recommended)
+- npm
 
 ### Installation
 
-1. Clone the repository:
+1. Clone the repo
    ```bash
-   git clone https://github.com/yourusername/multi-account-statement-reader.git
-   cd multi-account-statement-reader
+   git clone https://github.com/yourusername/account-statement-reader.git
+   cd account-statement-reader
    ```
 
-2. Install dependencies:
+2. Install dependencies
    ```bash
    npm install
-   # or
-   yarn install
    ```
 
-3. Start the development server:
+3. Run the dev server
    ```bash
    npm run dev
-   # or
-   yarn dev
    ```
 
-4. Open your browser and navigate to `http://localhost:3000`
+4. Open `http://localhost:3000`
 
-## Usage Guide
+## Usage
 
-### Uploading Account Statements
+1. Click the upload area or drag-and-drop a statement file.
+2. Wait for parsing to complete (progress bar + skeletons).
+3. Review account details and totals.
+4. Filter transactions by **All / Credits / Debits**.
 
-1. Click the "Upload First Account Statement" button on the home page
-2. Select an Excel file (.xlsx or .xls) containing your account statement
-3. The application will process the file and display the account information
-4. To add more accounts, click "Add Another Account Statement"
+## Supported File Format
 
-### Managing VATable Transactions
+The parser expects:
 
-1. Once an account is loaded, you'll see the "Select VATable Credit Transactions" section
-2. By default, all credit transactions are marked as VATable
-3. You can uncheck specific transactions that should not be subject to VAT
-4. The VAT calculation (7.5%) will automatically update based on your selections
-5. The "Select All" checkbox allows you to quickly select or deselect all transactions
-
-### Viewing Account Information
-
-1. Use the account tabs at the top to switch between different accounts
-2. Each account displays:
-   - Account summary (account name, number, opening/closing balances, etc.)
-   - Transaction summary with VAT breakdown
-   - List of credit and debit transactions
-
-### Aggregate Calculations
-
-The "Combined Calculations" panel shows aggregated data across all accounts, including:
-- Total combined credit
-- Total combined debit
-- Combined VAT amount
-- Combined credit after VAT
-
-## File Format Requirements
-
-The application expects Excel files with the following structure:
-
-- Account information (name, number, currency, etc.) in the top rows
+- Account metadata (name, number, currency, period, balances) near the top.
 - A transaction table with headers including:
   - Date
   - Narration/Description
-  - Reference
-  - Debit
-  - Credit
-  - Balance
+  - Reference/Transaction Ref
+  - Debit / Credit
+  - Balance (or Balance After)
 
-## Component Structure
+If headers differ, update `src/workers/excelParser.worker.js` to map them.
 
-The application is built using the following key components:
+## Persistence
 
-- **Home (page.js)**: Main entry point and state manager
-- **AccountTabs**: Navigation between multiple accounts
-- **AccountSummary**: Displays account details
-- **VatableTransactionSelector**: Allows selection of VATable transactions
-- **VatBreakdown**: Shows VAT calculation summary
-- **TransactionController**: Manages and displays transactions
-- **AggregateCalculations**: Shows combined data across accounts
+Statements are stored in IndexedDB so you can refresh without losing data. Use **Clear saved data** to wipe the local cache.
 
-## Troubleshooting
+## Contributing
 
-### Common Issues
+Contributions are welcome. If you want to collaborate:
 
-1. **File Upload Errors**:
-   - Ensure your Excel file follows the expected format
-   - Check that the file isn't locked or read-only
-   - Files larger than 10MB may take longer to process
+1. Open an issue describing the feature or bug.
+2. Propose a solution or implementation approach.
+3. Submit a PR with a clear summary, screenshots (if UI changes), and testing notes.
 
-2. **VAT Selection Issues**:
-   - If checkboxes aren't responding, refresh the page and try again
-   - Ensure you're clicking directly on the checkbox, not the surrounding area
+### Good first ideas
 
-### Debug Mode
-
-For developers, you can enable debug mode by adding `?debug=true` to the URL. This will display additional console logs with transaction IDs and state updates.
+- Improve statement header detection for more banks
+- Add search across narration/reference
+- Add export to CSV
+- Add statement comparison tools
 
 ## License
 
 [MIT License](LICENSE)
-
-## Acknowledgments
-
-- Built with [Next.js](https://nextjs.org/)
-- UI components styled with [Tailwind CSS](https://tailwindcss.com/)
-- Excel processing via [SheetJS](https://sheetjs.com/)
