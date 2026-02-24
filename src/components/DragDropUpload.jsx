@@ -1,6 +1,5 @@
 // src/components/DragDropUpload.jsx
 import React, { useState, useRef } from "react";
-import PropTypes from "prop-types";
 
 const DragDropUpload = ({ onFileSelect, accept = "*", disabled = false }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -91,12 +90,6 @@ const DragDropUpload = ({ onFileSelect, accept = "*", disabled = false }) => {
       </p>
     </div>
   );
-};
-
-DragDropUpload.propTypes = {
-  onFileSelect: PropTypes.func.isRequired,
-  accept: PropTypes.string,
-  disabled: PropTypes.bool,
 };
 
 export default DragDropUpload;
