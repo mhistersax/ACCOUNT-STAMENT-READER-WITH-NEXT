@@ -3,8 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { List } from "react-window";
 import DragDropUpload from "../components/DragDropUpload";
 import { useFileProcessor } from "../hooks/useFileProcessor";
+import { clearTransactions, loadTransactions, saveTransactions } from "../lib/dbStorage";
 
-const STORAGE_KEY = "asr_state_v1";
 const THEME_KEY = "asr_theme_v1";
 
 export default function Home() {
@@ -15,16 +15,19 @@ export default function Home() {
   const [systemPrefersDark, setSystemPrefersDark] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setTransactions(parsed.transactions || []);
-        setAccountInfo(parsed.accountInfo || null);
-      }
-    } catch (error) {
-      console.error("Failed to load saved state:", error);
-    }
+    let cancelled = false;
+    loadTransactions()
+      .then(({ transactions: savedTransactions, accountInfo: savedAccountInfo }) => {
+        if (cancelled) return;
+        setTransactions(savedTransactions || []);
+        setAccountInfo(savedAccountInfo || null);
+      })
+      .catch((error) => {
+        console.error("Failed to load saved state:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -78,13 +81,9 @@ export default function Home() {
       let cancelled = false;
       const saveState = () => {
         if (cancelled) return;
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            transactions,
-            accountInfo
-          })
-        );
+        saveTransactions(transactions, accountInfo).catch((error) => {
+          console.error("Failed to save state:", error);
+        });
       };
 
       const idleId =
@@ -232,7 +231,9 @@ export default function Home() {
   const handleClear = () => {
     setTransactions([]);
     setAccountInfo(null);
-    localStorage.removeItem(STORAGE_KEY);
+    clearTransactions().catch((error) => {
+      console.error("Failed to clear saved state:", error);
+    });
   };
 
   return (

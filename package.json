@@ -12,6 +12,7 @@
     "account-statement-reader": "file:",
     "autoprefixer": "^10.4.21",
     "exceljs": "^4.4.0",
+    "idb": "^8.0.3",
     "next": "^15.5.4",
     "postcss": "^8.5.3",
     "react": "^19.0.0",
